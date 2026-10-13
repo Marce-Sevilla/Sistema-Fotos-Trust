@@ -9,6 +9,7 @@ const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (c) => ({ '&': '
 export function createWizard(root) {
   const photos = new Array(STEPS.length).fill(null); // { blob, width, height, url }
   const profile = { fullName: '', email: '', phone: '', vehicle: '' };
+  const announced = new Set(); // pasos cuya tarjeta "esta es la foto que sigue" ya se vio
   let index = -1; // -1 = pantalla inicial (datos y tipo de vehículo)
   let stream = null;
 
@@ -21,6 +22,8 @@ export function createWizard(root) {
     const step = STEPS[index];
     const photo = photos[index];
     const title = t(`steps.${step.id}.title`);
+    // Antes de abrir la cámara, cada paso muestra al centro qué foto se va a tomar.
+    const announcing = !photo && !announced.has(index);
 
     root.innerHTML = `
       <header class="top">
@@ -28,25 +31,36 @@ export function createWizard(root) {
           ${STEPS.map((_, i) => `<span class="dot ${i < index ? 'done' : ''} ${i === index ? 'current' : ''}"></span>`).join('')}
         </div>
         <p class="counter">${t('wizard.counter', { current: index + 1, total: STEPS.length })}</p>
-        <h1>${title}</h1>
-        <p class="hint">${t(`steps.${step.id}.hint`)}</p>
+        ${announcing ? '' : `<h1>${title}</h1><p class="hint">${t(`steps.${step.id}.hint`)}</p>`}
       </header>
       <div class="viewer">
-        ${photo ? `<img class="photo" alt="${t('wizard.photoAlt', { title })}" src="${photo.url}" />` : '<video class="video" playsinline muted></video>'}
-        ${photo ? '' : guideSvg(step.guide, profile.vehicle)}
-        <p class="status" role="status" hidden></p>
+        ${
+          announcing
+            ? `<div class="announce">
+                 <p class="announce-label">${t('wizard.nextPhoto')}</p>
+                 ${guideSvg(step.guide, profile.vehicle, 'announce-guide')}
+                 <h1>${title}</h1>
+                 <p class="hint">${t(`steps.${step.id}.hint`)}</p>
+                 <button class="btn primary" data-action="open-camera">${t('wizard.openCamera')}</button>
+               </div>`
+            : `${photo ? `<img class="photo" alt="${t('wizard.photoAlt', { title })}" src="${photo.url}" />` : '<video class="video" playsinline muted></video>'}
+               ${photo ? '' : guideSvg(step.guide, profile.vehicle)}
+               <p class="status" role="status" hidden></p>`
+        }
       </div>
       <footer class="actions">
         ${
           photo
             ? `<button class="btn secondary" data-action="retake">${t('wizard.retake')}</button>
                <button class="btn primary" data-action="next">${index === STEPS.length - 1 ? t('wizard.finish') : t('wizard.next')}</button>`
-            : `<button class="btn secondary" data-action="back">${t('wizard.back')}</button>
-               <button class="btn shutter" data-action="capture" aria-label="${t('wizard.capture')}"></button>`
+            : announcing
+              ? `<button class="btn secondary" data-action="back">${t('wizard.back')}</button>`
+              : `<button class="btn secondary" data-action="back">${t('wizard.back')}</button>
+                 <button class="btn shutter" data-action="capture" aria-label="${t('wizard.capture')}"></button>`
         }
       </footer>`;
 
-    if (!photo) initCamera();
+    if (!photo && !announcing) initCamera();
   }
 
   // ---- Pantalla inicial -------------------------------------------------------
@@ -170,7 +184,10 @@ export function createWizard(root) {
   root.addEventListener('click', (event) => {
     const action = event.target.closest('[data-action]')?.dataset.action;
     if (!action) return;
-    if (action === 'capture') capture();
+    if (action === 'open-camera') {
+      announced.add(index);
+      render();
+    } else if (action === 'capture') capture();
     else if (action === 'retake') retake();
     else if (action === 'next') {
       index += 1;

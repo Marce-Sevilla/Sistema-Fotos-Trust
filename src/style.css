@@ -286,6 +286,49 @@ button {
   filter: drop-shadow(0 0 2px rgb(0 0 0 / 0.6));
 }
 
+/* Tarjeta centrada que anuncia la foto que sigue, antes de abrir la cámara */
+.announce {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  padding: 20px 20px 24px;
+  overflow-y: auto;
+  text-align: center;
+}
+
+.announce-label {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--orange-warm);
+}
+
+.announce-guide {
+  flex: 0 1 auto;
+  width: 100%;
+  max-width: 320px;
+  max-height: 40%;
+  min-height: 0;
+}
+
+.announce h1 {
+  margin: 4px 0 0;
+  font-family: var(--font-display);
+  font-size: 1.7rem;
+  line-height: 1.15;
+}
+
+.announce .btn.primary {
+  flex: none;
+  margin-top: 12px;
+  min-width: 200px;
+}
+
 .status {
   position: absolute;
   inset: auto 12px 12px;

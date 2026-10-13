@@ -188,8 +188,8 @@ function shape(kind, vehicle) {
   }
 }
 
-export function guideSvg(kind, vehicle = 'sedan') {
-  return `<svg class="guide" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${shape(kind, vehicle)}</svg>`;
+export function guideSvg(kind, vehicle = 'sedan', cls = 'guide') {
+  return `<svg class="${cls}" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${shape(kind, vehicle)}</svg>`;
 }
 
 // Icono pequeño (perfil) para el selector de tipo de vehículo.
