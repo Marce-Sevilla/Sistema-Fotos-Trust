@@ -1,3 +1,4 @@
 import './style.css';
+import { createWizard } from './wizard/wizard.js';
 
-document.getElementById('app').textContent = 'Sistema de Fotos TRU';
+createWizard(document.getElementById('app'));
