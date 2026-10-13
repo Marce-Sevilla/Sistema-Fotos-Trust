@@ -2,6 +2,8 @@ import { STEPS } from './steps.js';
 import { guideSvg, vehicleIcon, VEHICLE_TYPES } from './guides.js';
 import { validateProfile } from './profile.js';
 import { cameraSupported, startCamera, stopCamera, captureFrame, pickPhotoFile } from './camera.js';
+import { validatePhoto } from '../validation/index.js';
+import { loadVehicleModel } from '../validation/vehicle.js';
 import { t, onLangChange } from '../i18n.js';
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -44,15 +46,17 @@ export function createWizard(root) {
                  <button class="btn primary" data-action="open-camera">${t('wizard.openCamera')}</button>
                </div>`
             : `${photo ? `<img class="photo" alt="${t('wizard.photoAlt', { title })}" src="${photo.url}" />` : '<video class="video" playsinline muted></video>'}
-               ${photo ? '' : guideSvg(step.guide, profile.vehicle)}
+               ${photo ? verdictHtml(photo) : guideSvg(step.guide, profile.vehicle)}
                <p class="status" role="status" hidden></p>`
         }
       </div>
       <footer class="actions">
         ${
           photo
-            ? `<button class="btn secondary" data-action="retake">${t('wizard.retake')}</button>
-               <button class="btn primary" data-action="next">${index === STEPS.length - 1 ? t('wizard.finish') : t('wizard.next')}</button>`
+            ? photo.status === 'fail'
+              ? `<button class="btn primary" data-action="retake">${t('wizard.retake')}</button>`
+              : `<button class="btn secondary" data-action="retake">${t('wizard.retake')}</button>
+                 <button class="btn primary" data-action="next" ${photo.status === 'checking' ? 'disabled' : ''}>${index === STEPS.length - 1 ? t('wizard.finish') : t('wizard.next')}</button>`
             : announcing
               ? `<button class="btn secondary" data-action="back">${t('wizard.back')}</button>`
               : `<button class="btn secondary" data-action="back">${t('wizard.back')}</button>
@@ -120,6 +124,7 @@ export function createWizard(root) {
       root.querySelector('.invalid input')?.focus();
       return;
     }
+    loadVehicleModel().catch(() => {}); // precarga el detector mientras el usuario lee las instrucciones
     index = 0;
     render();
   }
@@ -151,8 +156,22 @@ export function createWizard(root) {
     const video = root.querySelector('video');
     const result = stream && video?.videoWidth ? await captureFrame(video) : await pickPhotoFile();
     if (!result) return;
-    photos[index] = { ...result, url: URL.createObjectURL(result.blob) };
+
+    const photo = { ...result, url: URL.createObjectURL(result.blob), status: 'checking' };
+    const at = index;
+    photos[at] = photo;
     render();
+
+    // Solo se puede continuar si la foto pasa la validación (o si no pudo validarse).
+    Object.assign(photo, await validatePhoto(STEPS[at].id, result.blob));
+    if (photos[at] === photo && index === at) render();
+  }
+
+  function verdictHtml(photo) {
+    if (photo.status === 'checking') return `<p class="verdict checking" role="status">${t('validate.checking')}</p>`;
+    if (photo.status === 'ok') return `<p class="verdict ok" role="status">✓ ${t('validate.ok')}</p>`;
+    if (photo.status === 'fail') return `<p class="verdict fail" role="alert">${t(photo.reason)}</p>`;
+    return photo.reason ? `<p class="verdict warn" role="status">${t(photo.reason)}</p>` : '';
   }
 
   function retake() {

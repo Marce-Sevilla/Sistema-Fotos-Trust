@@ -286,6 +286,32 @@ button {
   filter: drop-shadow(0 0 2px rgb(0 0 0 / 0.6));
 }
 
+/* Resultado de la validación sobre la foto tomada */
+.verdict {
+  position: absolute;
+  inset: auto 12px 12px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #fff;
+  background: rgb(0 0 0 / 0.75);
+}
+
+.verdict.ok {
+  background: #1f8a4c;
+}
+
+.verdict.fail {
+  background: #c0392b;
+}
+
+.verdict.warn {
+  background: #b9770e;
+}
+
 /* Tarjeta centrada que anuncia la foto que sigue, antes de abrir la cámara */
 .announce {
   display: flex;
