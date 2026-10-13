@@ -1,6 +1,6 @@
 // Siluetas guía de encuadre (SVG) que se superponen al video.
 // Todas usan viewBox 0 0 100 100 con preserveAspectRatio="none" para ocupar el visor.
-const STROKE = 'fill="none" stroke="#fff" stroke-width="0.8" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"';
+const STROKE = 'fill="none" stroke="#fff" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"';
 
 const SHAPES = {
   front: `

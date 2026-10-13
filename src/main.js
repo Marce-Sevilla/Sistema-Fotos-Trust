@@ -1,4 +1,5 @@
 import './style.css';
+import logoUrl from './assets/logo-header.png';
 import { initI18n, t, getLang, setLang, onLangChange } from './i18n.js';
 import { createWizard } from './wizard/wizard.js';
 
@@ -15,10 +16,8 @@ app.innerHTML = `
 const brand = app.querySelector('[data-brand]');
 const toggle = app.querySelector('[data-lang-toggle]');
 
-// Para usar el logo oficial: colocar el archivo en public/ (p. ej. public/logo.svg)
-// y cambiar el contenido de la marca por <img src="/logo.svg" alt="...">.
 function renderChrome() {
-  brand.innerHTML = `<span class="brand-name">${t('brand.name')}</span>`;
+  brand.innerHTML = `<img src="${logoUrl}" alt="${t('brand.name')}" />`;
   const next = getLang() === 'es' ? 'en' : 'es';
   toggle.textContent = next.toUpperCase();
   toggle.setAttribute('aria-label', t('lang.switch'));

@@ -1,11 +1,16 @@
+/* Paleta y tipografías tomadas de https://trustinsuranceservices.com/ */
 :root {
-  --bg: #0f172a;
-  --surface: #1e293b;
-  --text: #f8fafc;
-  --muted: #94a3b8;
-  --accent: #22c55e;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  color-scheme: dark;
+  --navy: #001d3d;
+  --navy-dark: #071a2d;
+  --orange: #f65a13;
+  --orange-warm: #f9a62b;
+  --white: #fafeff;
+  --line: #dbe3ec;
+  --muted: #5b6b7f;
+  --font-sans: 'Montserrat', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Playfair Display', Georgia, serif;
+  font-family: var(--font-sans);
+  color-scheme: light;
 }
 
 * {
@@ -16,8 +21,12 @@ html,
 body {
   margin: 0;
   height: 100%;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--white);
+  color: var(--navy);
+}
+
+button {
+  font-family: inherit;
 }
 
 #app {
@@ -29,13 +38,14 @@ body {
   padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
 }
 
+/* Barra de marca */
 .brand-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 10px 0;
-  border-bottom: 1px solid var(--surface);
+  border-bottom: 1px solid var(--line);
 }
 
 .brand {
@@ -46,28 +56,27 @@ body {
 
 .brand img {
   display: block;
-  max-height: 36px;
+  height: 40px;
   width: auto;
 }
 
-.brand-name {
-  font-weight: 700;
-  font-size: 0.95rem;
-  letter-spacing: 0.02em;
-}
-
 .lang-toggle {
-  min-width: 48px;
+  min-width: 52px;
   min-height: 36px;
-  padding: 0 12px;
-  border: 1px solid var(--muted);
+  padding: 0 14px;
+  border: 1.5px solid var(--navy);
   border-radius: 999px;
   background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: 0.85rem;
+  color: var(--navy);
+  font-size: 0.8rem;
   font-weight: 700;
+  letter-spacing: 0.04em;
   cursor: pointer;
+}
+
+.lang-toggle:hover {
+  background: var(--navy);
+  color: var(--white);
 }
 
 .wizard {
@@ -77,20 +86,34 @@ body {
   min-height: 0;
 }
 
+/* Encabezado de cada paso */
 .top {
-  padding: 12px 0 8px;
+  padding: 14px 0 10px;
 }
 
 .top h1 {
-  margin: 4px 0;
-  font-size: 1.25rem;
+  margin: 4px 0 6px;
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--navy);
 }
 
-.counter,
+.counter {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--orange);
+}
+
 .hint {
   margin: 0;
   color: var(--muted);
   font-size: 0.9rem;
+  line-height: 1.45;
 }
 
 .progress {
@@ -100,26 +123,28 @@ body {
 
 .dot {
   flex: 1;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--surface);
+  height: 5px;
+  border-radius: 999px;
+  background: var(--line);
 }
 
 .dot.done {
-  background: var(--accent);
+  background: var(--orange);
 }
 
 .dot.current {
-  background: var(--text);
+  background: var(--navy);
 }
 
+/* Visor de cámara y foto */
 .viewer {
   position: relative;
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  border-radius: 12px;
-  background: #000;
+  border-radius: 20px;
+  background: var(--navy-dark);
+  box-shadow: 0 8px 24px rgb(0 29 61 / 0.18);
 }
 
 .video,
@@ -135,18 +160,22 @@ body {
   width: 100%;
   height: 100%;
   pointer-events: none;
+  filter: drop-shadow(0 0 2px rgb(0 0 0 / 0.6));
 }
 
 .status {
   position: absolute;
   inset: auto 12px 12px;
   margin: 0;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: rgb(0 0 0 / 0.75);
-  font-size: 0.9rem;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgb(0 29 61 / 0.88);
+  color: var(--white);
+  font-size: 0.85rem;
+  line-height: 1.4;
 }
 
+/* Botones */
 .actions {
   display: flex;
   align-items: center;
@@ -156,14 +185,18 @@ body {
 }
 
 .btn {
-  min-height: 48px;
-  padding: 0 20px;
+  min-height: 52px;
+  padding: 0 24px;
   border: 0;
-  border-radius: 10px;
-  font: inherit;
-  font-weight: 600;
-  color: var(--text);
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 700;
   cursor: pointer;
+  transition: transform 0.1s, background 0.15s;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .btn:disabled {
@@ -173,31 +206,37 @@ body {
 
 .btn.primary {
   flex: 1;
-  background: var(--accent);
-  color: #052e16;
+  background: var(--orange);
+  color: #fff;
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: #dc4c0a;
 }
 
 .btn.secondary {
-  background: var(--surface);
+  background: transparent;
+  color: var(--navy);
+  box-shadow: inset 0 0 0 1.5px var(--navy);
 }
 
 .btn.shutter {
-  width: 72px;
-  height: 72px;
+  width: 76px;
+  height: 76px;
   padding: 0;
-  border: 4px solid var(--text);
-  border-radius: 50%;
-  background: var(--text);
-  box-shadow: inset 0 0 0 4px var(--bg);
+  border: 4px solid var(--orange);
+  background: var(--orange);
+  box-shadow: inset 0 0 0 4px var(--white);
 }
 
+/* Resumen */
 .grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+  gap: 12px;
   flex: 1;
   margin: 0;
-  padding: 0;
+  padding: 4px 0;
   overflow-y: auto;
   list-style: none;
 }
@@ -205,14 +244,16 @@ body {
 .grid li {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 0.85rem;
-  color: var(--muted);
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--navy);
 }
 
 .grid img {
   width: 100%;
   aspect-ratio: 4 / 3;
   object-fit: cover;
-  border-radius: 8px;
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgb(0 29 61 / 0.15);
 }
