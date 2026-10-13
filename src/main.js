@@ -5,6 +5,9 @@ import { createWizard } from './wizard/wizard.js';
 
 initI18n();
 
+// El botón muestra el idioma al que se cambia, escrito en ese mismo idioma.
+const LANG_NAMES = { es: 'Español', en: 'English' };
+
 const app = document.getElementById('app');
 app.innerHTML = `
   <div class="brand-bar">
@@ -19,7 +22,7 @@ const toggle = app.querySelector('[data-lang-toggle]');
 function renderChrome() {
   brand.innerHTML = `<img src="${logoUrl}" alt="${t('brand.name')}" />`;
   const next = getLang() === 'es' ? 'en' : 'es';
-  toggle.textContent = next.toUpperCase();
+  toggle.textContent = LANG_NAMES[next];
   toggle.setAttribute('aria-label', t('lang.switch'));
   toggle.dataset.next = next;
 }
