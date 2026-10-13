@@ -3,8 +3,8 @@
 export const STEPS = [
   { id: 'frente', guide: 'front' },
   { id: 'trasera', guide: 'rear' },
-  { id: 'lateral-izquierdo', guide: 'side' },
-  { id: 'lateral-derecho', guide: 'side' },
+  { id: 'lateral-izquierdo', guide: 'side-left' },
+  { id: 'lateral-derecho', guide: 'side-right' },
   { id: 'vin', guide: 'vin' },
   { id: 'odometro', guide: 'odometer' },
 ];
