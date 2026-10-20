@@ -9,6 +9,39 @@ export const LIMITS = {
   centerRange: [0.3, 0.7], // el centro del vehículo debe quedar en el tercio central
 };
 
+// ---- Resolución, nitidez y exposición ----------------------------------------------
+// Calibrados con fotos reales y versiones degradadas a propósito: las fotos nítidas dan 800-19000
+// de nitidez y las muy desenfocadas menos de 60.
+export const QUALITY_LIMITS = {
+  minLongSide: 1280, // px; una foto 720p (1280x720) es el mínimo aceptable
+  minShortSide: 720,
+  minSharpness: 120, // varianza del Laplaciano (percentil 90 de los bloques); por debajo es borrosa
+  maxMean: 215, // luminosidad media máxima (0-255)
+  maxBrightFraction: 0.35, // proporción máxima de píxeles quemados (casi blancos)
+  // Un tablero o un VIN en sombra son oscuros por naturaleza, así que las fotos de cerca
+  // toleran mucha más oscuridad y es el OCR quien decide si se puede leer.
+  dark: {
+    exterior: { minMean: 50, maxDarkFraction: 0.45 },
+    close: { minMean: 8, maxDarkFraction: 0.985 }, // solo descarta fotos casi negras (lente tapada)
+  },
+};
+
+export function evaluateResolution(width, height) {
+  const { minLongSide, minShortSide } = QUALITY_LIMITS;
+  return Math.max(width, height) < minLongSide || Math.min(width, height) < minShortSide ? 'validate.lowResolution' : null;
+}
+
+// metrics: resultado de measureQuality(). kind: 'exterior' (foto del vehículo) | 'close' (VIN u odómetro).
+// Devuelve la clave de i18n del problema, o null si está bien.
+export function evaluateQuality({ sharpness, mean, darkFraction, brightFraction }, kind = 'exterior') {
+  const { minSharpness, maxMean, maxBrightFraction, dark } = QUALITY_LIMITS;
+  const { minMean, maxDarkFraction } = dark[kind];
+  if (mean < minMean || darkFraction > maxDarkFraction) return 'validate.tooDark';
+  if (mean > maxMean || brightFraction > maxBrightFraction) return 'validate.tooBright';
+  if (sharpness < minSharpness) return 'validate.blurry';
+  return null;
+}
+
 // vista: 'face' (frente o trasera) | 'side' (lateral). Devuelve la clave de i18n del problema, o null si es válida.
 export function evaluateVehicleBox(view, box, imageWidth, imageHeight) {
   if (!box) return 'validate.noVehicle';

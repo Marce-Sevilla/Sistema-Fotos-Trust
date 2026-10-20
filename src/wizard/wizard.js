@@ -4,6 +4,8 @@ import { validateProfile } from './profile.js';
 import { cameraSupported, startCamera, stopCamera, captureFrame, pickPhotoFile } from './camera.js';
 import { validatePhoto } from '../validation/index.js';
 import { loadVehicleModel } from '../validation/vehicle.js';
+import { loadOcr } from '../validation/ocr.js';
+import { ODOMETER_PATTERN, VIN_PATTERN, vinChecksumValid } from '../validation/ocr-rules.js';
 import { t, onLangChange } from '../i18n.js';
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -12,6 +14,9 @@ export function createWizard(root) {
   const photos = new Array(STEPS.length).fill(null); // { blob, width, height, url }
   const profile = { fullName: '', email: '', phone: '', vehicle: '' };
   const announced = new Set(); // pasos cuya tarjeta "esta es la foto que sigue" ya se vio
+  const ocrFailures = {}; // intentos fallidos de lectura (OCR) por paso
+  const OCR_FAIL_REASONS = new Set(['validate.noVin', 'validate.noOdometer']);
+  const MAX_OCR_FAILURES = 2;
   let index = -1; // -1 = pantalla inicial (datos y tipo de vehículo)
   let stream = null;
 
@@ -24,6 +29,7 @@ export function createWizard(root) {
     const step = STEPS[index];
     const photo = photos[index];
     const title = t(`steps.${step.id}.title`);
+    if (index >= 3) loadOcr().catch(() => {}); // precarga el OCR antes de llegar al VIN y al odómetro
     // Antes de abrir la cámara, cada paso muestra al centro qué foto se va a tomar.
     const announcing = !photo && !announced.has(index);
 
@@ -50,13 +56,14 @@ export function createWizard(root) {
                <p class="status" role="status" hidden></p>`
         }
       </div>
+      ${photo ? confirmHtml(step, photo) : ''}
       <footer class="actions">
         ${
           photo
             ? photo.status === 'fail'
               ? `<button class="btn primary" data-action="retake">${t('wizard.retake')}</button>`
               : `<button class="btn secondary" data-action="retake">${t('wizard.retake')}</button>
-                 <button class="btn primary" data-action="next" ${photo.status === 'checking' ? 'disabled' : ''}>${index === STEPS.length - 1 ? t('wizard.finish') : t('wizard.next')}</button>`
+                 <button class="btn primary" data-action="next" ${photo.status === 'checking' || valueCheck(step, photo).blocking ? 'disabled' : ''}>${index === STEPS.length - 1 ? t('wizard.finish') : t('wizard.next')}</button>`
             : announcing
               ? `<button class="btn secondary" data-action="back">${t('wizard.back')}</button>`
               : `<button class="btn secondary" data-action="back">${t('wizard.back')}</button>
@@ -163,15 +170,65 @@ export function createWizard(root) {
     render();
 
     // Solo se puede continuar si la foto pasa la validación (o si no pudo validarse).
-    Object.assign(photo, await validatePhoto(STEPS[at].id, result.blob));
+    const verdict = await validatePhoto(STEPS[at].id, result.blob);
+    // Si el OCR no logra leer el VIN/kilometraje tras dos intentos, se permite escribirlo a mano
+    // (la foto igual tuvo que pasar resolución, nitidez y exposición).
+    if (verdict.status === 'fail' && OCR_FAIL_REASONS.has(verdict.reason)) {
+      ocrFailures[at] = (ocrFailures[at] ?? 0) + 1;
+      if (ocrFailures[at] >= MAX_OCR_FAILURES) Object.assign(verdict, { status: 'unverified', reason: 'validate.manualEntry' });
+    }
+    Object.assign(photo, verdict);
     if (photos[at] === photo && index === at) render();
+  }
+
+  // ---- Confirmación del VIN y del kilometraje leídos ---------------------------------
+  // El OCR puede equivocarse en un carácter, así que la persona confirma o corrige lo leído.
+  const READ_STEPS = new Set(['vin', 'odometro']);
+
+  // blocking: impide continuar; warning: solo avisa (p. ej. un VIN que no pasa el dígito verificador).
+  function valueCheck(step, photo) {
+    if (!READ_STEPS.has(step.id) || photo.status === 'fail' || photo.status === 'checking') return { blocking: null, warning: null };
+    const value = photo.value ?? '';
+    if (step.id === 'vin') {
+      if (!VIN_PATTERN.test(value)) return { blocking: 'confirm.vinInvalid', warning: null };
+      return { blocking: null, warning: vinChecksumValid(value) ? null : 'confirm.vinChecksum' };
+    }
+    return { blocking: ODOMETER_PATTERN.test(value) ? null : 'confirm.odometerInvalid', warning: null };
+  }
+
+  function confirmHtml(step, photo) {
+    if (!READ_STEPS.has(step.id) || photo.status === 'fail' || photo.status === 'checking') return '';
+    const isVin = step.id === 'vin';
+    const { blocking, warning } = valueCheck(step, photo);
+    const message = blocking ?? warning;
+    return `
+      <div class="confirm">
+        <label for="confirm-value">${t(isVin ? 'confirm.vin' : 'confirm.odometer')}</label>
+        <input id="confirm-value" data-confirm type="text" value="${escapeHtml(photo.value ?? '')}" autocomplete="off" autocorrect="off" spellcheck="false"
+          ${isVin ? 'maxlength="17" autocapitalize="characters"' : 'maxlength="7" inputmode="numeric"'} />
+        <p class="error confirm-message" role="alert" ${message ? '' : 'hidden'}>${message ? t(message) : ''}</p>
+      </div>`;
+  }
+
+  function onConfirmInput(input) {
+    const photo = photos[index];
+    const step = STEPS[index];
+    // Normaliza lo que se escribe: el VIN va en mayúsculas y el kilometraje solo lleva números.
+    photo.value = step.id === 'vin' ? input.value.toUpperCase().replace(/[^A-Z0-9]/g, '') : input.value.replace(/\D/g, '');
+    input.value = photo.value;
+    const { blocking, warning } = valueCheck(step, photo);
+    const message = blocking ?? warning;
+    const note = root.querySelector('.confirm-message');
+    note.textContent = message ? t(message) : '';
+    note.hidden = !message;
+    root.querySelector('[data-action="next"]').disabled = Boolean(blocking);
   }
 
   function verdictHtml(photo) {
     if (photo.status === 'checking') return `<p class="verdict checking" role="status">${t('validate.checking')}</p>`;
-    if (photo.status === 'ok') return `<p class="verdict ok" role="status">✓ ${t('validate.ok')}</p>`;
+    if (photo.status === 'ok') return `<p class="verdict ok" role="status">✓ ${escapeHtml(t(photo.reason ?? 'validate.ok', photo.params))}</p>`;
     if (photo.status === 'fail') return `<p class="verdict fail" role="alert">${t(photo.reason)}</p>`;
-    return photo.reason ? `<p class="verdict warn" role="status">${t(photo.reason)}</p>` : '';
+    return photo.reason ? `<p class="verdict warn" role="status">${escapeHtml(t(photo.reason, photo.params))}</p>` : '';
   }
 
   function retake() {
@@ -186,6 +243,7 @@ export function createWizard(root) {
         <h1>${t('summary.title')}</h1>
         <p class="hint">${t('summary.hint', { total: STEPS.length })}</p>
         <p class="contact">${escapeHtml(profile.fullName)} · ${escapeHtml(profile.email)} · ${escapeHtml(profile.phone)} · ${t(`vehicle.${profile.vehicle}`)}</p>
+        <p class="contact">VIN ${escapeHtml(photos[STEPS.findIndex((s) => s.id === 'vin')]?.value ?? '')} · ${escapeHtml(photos[STEPS.findIndex((s) => s.id === 'odometro')]?.value ?? '')}</p>
       </header>
       <ul class="grid">
         ${STEPS.map((s, i) => `<li><img alt="${t(`steps.${s.id}.title`)}" src="${photos[i].url}" /><span>${t(`steps.${s.id}.title`)}</span></li>`).join('')}
@@ -195,6 +253,10 @@ export function createWizard(root) {
         <button class="btn primary" data-action="submit" disabled title="${t('summary.submitSoon')}">${t('summary.submit')}</button>
       </footer>`;
   }
+
+  root.addEventListener('input', (event) => {
+    if (event.target.matches('[data-confirm]')) onConfirmInput(event.target);
+  });
 
   root.addEventListener('submit', (event) => {
     if (event.target.matches('form.intro')) submitIntro(event);

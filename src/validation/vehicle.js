@@ -1,5 +1,7 @@
 // Detección de vehículos con TensorFlow.js + COCO-SSD, cargados bajo demanda para no
 // penalizar la carga inicial de la página.
+import { drawScaled } from './image.js';
+
 const VEHICLE_CLASSES = new Set(['car', 'truck', 'bus']);
 const MIN_SCORE = 0.4;
 const MAX_SIDE = 640; // se analiza una versión reducida de la foto: es más rápido y basta para detectar
@@ -18,20 +20,10 @@ export function loadVehicleModel() {
   return modelPromise;
 }
 
-async function toCanvas(blob) {
-  const bitmap = await createImageBitmap(blob);
-  const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close?.();
-  return canvas;
-}
-
 // Devuelve { box, width, height } con el vehículo más grande detectado (box = null si no hay ninguno).
-export async function detectVehicle(blob) {
-  const [model, canvas] = await Promise.all([loadVehicleModel(), toCanvas(blob)]);
+export async function detectVehicle(bitmap) {
+  const canvas = drawScaled(bitmap, MAX_SIDE);
+  const model = await loadVehicleModel();
   const predictions = await model.detect(canvas, 10, MIN_SCORE);
   const vehicles = predictions.filter((p) => VEHICLE_CLASSES.has(p.class));
   vehicles.sort((a, b) => b.bbox[2] * b.bbox[3] - a.bbox[2] * a.bbox[3]);
