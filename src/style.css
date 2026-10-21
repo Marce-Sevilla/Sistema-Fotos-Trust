@@ -80,6 +80,14 @@ button {
   color: var(--navy);
 }
 
+.debug-badge {
+  margin: 6px 0 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--orange-warm);
+}
+
 .wizard {
   display: flex;
   flex: 1;

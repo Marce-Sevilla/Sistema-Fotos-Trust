@@ -7,6 +7,7 @@ import { loadVehicleModel } from '../validation/vehicle.js';
 import { loadOcr } from '../validation/ocr.js';
 import { ODOMETER_PATTERN, VIN_PATTERN, vinChecksumValid } from '../validation/ocr-rules.js';
 import { t, onLangChange } from '../i18n.js';
+import { isDebug } from '../debug.js';
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -224,12 +225,10 @@ export function createWizard(root) {
     root.querySelector('[data-action="next"]').disabled = Boolean(blocking);
   }
 
-  // Con `?debug=1` se muestran las medidas de la foto, para calibrar los umbrales con fotos reales.
-  const DEBUG = new URLSearchParams(location.search).has('debug');
-
+  // En modo de diagnóstico se muestran las medidas de la foto, para calibrar los umbrales (ver debug.js).
   function debugHtml(photo) {
     const m = photo.metrics;
-    if (!DEBUG || !m) return '';
+    if (!isDebug() || !m) return '';
     const n = (v, d = 1) => Number(v).toFixed(d);
     return `<small class="debug">bordes ${n(m.edgeRatio, 2)} · nitidez ${n(m.sharpness, 0)} · luz ${n(m.mean, 0)} · oscuro ${n(m.darkFraction * 100, 0)}% · quemado ${n(m.brightFraction * 100, 0)}% · ${m.width}×${m.height}</small>`;
   }
