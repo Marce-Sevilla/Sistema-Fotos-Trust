@@ -1,4 +1,4 @@
-// Siluetas guía de encuadre (SVG) superpuestas al video.
+﻿// Siluetas guía de encuadre (SVG) superpuestas al video.
 // Hay 5 tipos de vehículo; cada uno tiene vista frontal, trasera y lateral (izquierda/derecha).
 // VIN y odómetro son iguales para todos. Todo se dibuja en un viewBox 100x100 y conserva
 // su proporción dentro del visor.
@@ -84,66 +84,68 @@ function sideProfile(type) {
 }
 
 // ------------------------------------------------------------ Vista frontal / trasera
-const G = 78; // suelo
-const SILL = 68;
+// El contorno exterior sigue la forma real de cada carrocería vista de frente: techo angosto,
+// pilares inclinados, cofre, guardafangos redondeados y el parachoques con las llantas asomando.
+// Parámetros (mitad derecha, centro en x = 50, suelo en y = 78):
+//   w: semiancho de la carrocería   roof / roofW: altura y semiancho del techo
+//   cowl: altura de la base del parabrisas   pillar: semiancho en esa base
+//   bottom: borde inferior del parachoques   rearGlass: dónde termina el vidrio trasero
+const GROUND_Y = 78;
+const TIRE_Y = 76.5; // las llantas solo asoman unas unidades bajo el parachoques
 
 const FACE = {
-  sedan: { w: 28, roof: 34, belt: 49, inset: 8, rearGlassBottom: 45 },
-  hatchback: { w: 26, roof: 35, belt: 50, inset: 7 },
-  suv: { w: 28, roof: 27, belt: 47, inset: 5 },
-  pickup: { w: 29, roof: 27, belt: 46, inset: 7, tailgate: true },
-  minivan: { w: 28, roof: 22, belt: 47, inset: 4 },
+  sedan: { w: 26, roof: 35, roofW: 15.5, cowl: 50.5, pillar: 21, bottom: 71, rearGlass: 47.5, trunk: true },
+  hatchback: { w: 25, roof: 36, roofW: 15.5, cowl: 51, pillar: 20.5, bottom: 71, rearGlass: 50 },
+  suv: { w: 27, roof: 27, roofW: 18.5, cowl: 47.5, pillar: 22.5, bottom: 70, rearGlass: 46.5 },
+  pickup: { w: 27.5, roof: 28, roofW: 17.5, cowl: 46, pillar: 22, bottom: 70, rearGlass: 39, tailgate: true },
+  minivan: { w: 26.5, roof: 22, roofW: 19.5, cowl: 46, pillar: 23.5, bottom: 70.5, rearGlass: 45 },
 };
 
-function faceGlass(p, bottomY, side) {
-  // Cristal trapezoidal que sigue la inclinación de la cabina.
-  const w = p.w;
-  const L = 50 - w;
-  const tw = w - p.inset;
-  const topX = 50 - tw + 3;
-  const baseX = L + 6.5;
-  const slope = (baseX - topX) / (p.belt + 1 - (p.roof + 4));
-  const x0 = topX + slope * (bottomY - (p.roof + 4));
-  return `M${x0.toFixed(2)} ${bottomY} L${topX} ${p.roof + 4} Q${topX + 0.5} ${p.roof + 2.5} ${topX + 3} ${p.roof + 2.5} H${100 - topX - 3} Q${100 - topX - 0.5} ${p.roof + 2.5} ${100 - topX} ${p.roof + 4} L${(100 - x0).toFixed(2)} ${bottomY} Z`;
-}
+const half = (inner) => inner + mirror(inner);
 
 function faceView(type, rear) {
   const p = FACE[type];
-  const { w, roof, belt: b, inset } = p;
+  const { w, roof, roofW, cowl, pillar, bottom } = p;
   const L = 50 - w;
   const R = 50 + w;
-  const tw = w - inset;
+  const fender = cowl + 1.5;
 
-  const body = `M${L} ${SILL - 2} V${b + 9} Q${L} ${b + 3} ${L + 4} ${b + 2.5} H${R - 4} Q${R} ${b + 3} ${R} ${b + 9} V${SILL - 2} Q${R} ${SILL} ${R - 3} ${SILL} H${L + 3} Q${L} ${SILL} ${L} ${SILL - 2} Z`;
-  const cabin = `M${L + 3} ${b + 2.5} L${50 - tw} ${roof + 3} Q${50 - tw + 0.5} ${roof} ${50 - tw + 4} ${roof} H${50 + tw - 4} Q${50 + tw - 0.5} ${roof} ${50 + tw} ${roof + 3} L${R - 3} ${b + 2.5}`;
-  const glass = faceGlass(p, rear && p.rearGlassBottom ? p.rearGlassBottom : b + 1);
+  // Contorno exterior (una sola línea cerrada).
+  const outline = `M${L + 3} ${bottom} Q${L} ${bottom} ${L} ${bottom - 3} V${fender + 8} Q${L} ${fender + 1.5} ${L + 4} ${fender} L${50 - pillar} ${cowl} L${50 - roofW - 1} ${roof + 3} Q${50 - roofW} ${roof} ${50 - roofW + 3.5} ${roof} H${50 + roofW - 3.5} Q${50 + roofW} ${roof} ${50 + roofW + 1} ${roof + 3} L${50 + pillar} ${cowl} L${R - 4} ${fender} Q${R} ${fender + 1.5} ${R} ${fender + 8} V${bottom - 3} Q${R} ${bottom} ${R - 3} ${bottom} Z`;
 
-  const half = (inner) => inner + mirror(inner);
+  // Cristal del parabrisas (o del vidrio trasero): sigue la inclinación de los pilares.
+  const glassBottom = rear ? p.rearGlass : cowl - 1;
+  const slope = ((50 - pillar + 3) - (50 - roofW + 3)) / (cowl - 1 - (roof + 4));
+  const gx = (50 - roofW + 3) + slope * (glassBottom - (roof + 4));
+  const glass = `M${gx.toFixed(2)} ${glassBottom} L${50 - roofW + 3} ${roof + 4} H${50 + roofW - 3} L${(100 - gx).toFixed(2)} ${glassBottom} Z`;
+
   const parts = [
-    path(body),
-    path(cabin),
+    path(outline),
     path(glass, FINE),
-    // retrovisores y llantas
-    half(`<rect ${MAIN} x="${L - 5}" y="${b - 2}" width="5" height="5" rx="1.2"/>`),
-    half(`<rect ${MAIN} x="${L + 3}" y="${SILL - 3}" width="9" height="${G - SILL + 3}" rx="2"/>`),
+    // retrovisores (sobresalen un poco del ancho de la carrocería)
+    half(path(`M${L + 3} ${cowl - 4} H${L - 2.5} Q${L - 4} ${cowl - 4} ${L - 4} ${cowl - 2.5} V${cowl + 0.5} Q${L - 4} ${cowl + 2} ${L - 2.5} ${cowl + 2} H${L + 3}`)),
+    // llantas: solo se ve la parte que asoma bajo el parachoques
+    half(path(`M${L + 2} ${bottom} V${TIRE_Y - 1} Q${L + 2} ${TIRE_Y} ${L + 3.5} ${TIRE_Y} H${L + 7.5} Q${L + 9} ${TIRE_Y} ${L + 9} ${TIRE_Y - 1} V${bottom}`)),
   ];
 
   if (!rear) {
     parts.push(
-      half(path(`M${L + 3} ${b + 5} Q${L + 3} ${b + 4} ${L + 5} ${b + 4} H${L + 16} L${L + 14} ${b + 10} H${L + 4} Q${L + 3} ${b + 10} ${L + 3} ${b + 9} Z`)),
-      `<rect ${MAIN} x="41" y="${b + 5.5}" width="18" height="7" rx="2"/>`,
-      path(`M41 ${b + 9} H59`, FINE),
-      `<circle ${FINE} cx="50" cy="${b + 9}" r="1.6"/>`,
-      path(`M37 ${b + 14} H63 L61 ${SILL - 2} H39 Z`, FINE),
+      // faros angulosos, rejilla, emblema, toma de aire inferior y faros antiniebla
+      half(path(`M${L + 3} ${cowl + 6} Q${L + 3.5} ${cowl + 3.5} ${L + 8} ${cowl + 4} L${50 - 9.5} ${cowl + 5.5} Q${50 - 9} ${cowl + 8} ${50 - 12} ${cowl + 9} L${L + 5} ${cowl + 10} Q${L + 2.5} ${cowl + 9.5} ${L + 3} ${cowl + 6} Z`, FINE)),
+      path(`M${50 - 8.5} ${cowl + 9.5} H${50 + 8.5} L${50 + 7.5} ${cowl + 14.5} H${50 - 7.5} Z`, FINE),
+      `<circle ${FINE} cx="50" cy="${cowl + 7}" r="1.4"/>`,
+      path(`M${50 - 14} ${cowl + 16} H${50 + 14} L${50 + 12} ${bottom - 1.5} H${50 - 12} Z`, FINE),
+      half(`<circle ${FINE} cx="${L + 7.5}" cy="${bottom - 4}" r="1.8"/>`),
     );
   } else {
     parts.push(
-      half(path(`M${L + 2.5} ${b + 5} H${L + 17} V${b + 10} H${L + 2.5} Z`)),
-      `<rect ${MAIN} x="43" y="${b + 10.5}" width="14" height="6" rx="1"/>`,
-      path(`M${L + 3} ${SILL - 6} H${R - 3}`, FINE),
+      // luces traseras anchas, placa y línea del parachoques
+      half(path(`M${L + 2.5} ${cowl + 4} H${50 - 9} V${cowl + 9} H${L + 4} Q${L + 2.5} ${cowl + 9} ${L + 2.5} ${cowl + 7.5} Z`, FINE)),
+      `<rect ${FINE} x="43" y="${cowl + 9.5}" width="14" height="6.5" rx="1"/>`,
+      path(`M${L + 3} ${bottom - 4.5} H${R - 3}`, FINE),
     );
-    if (p.rearGlassBottom) parts.push(path(`M${L + 4} ${b + 4} H${R - 4}`, FINE)); // línea de la cajuela
-    if (p.tailgate) parts.push(`<rect ${FINE} x="${L + 3}" y="${b + 3.5}" width="${2 * w - 6}" height="${SILL - 2 - b - 3.5}" rx="1.5"/>`);
+    if (p.trunk) parts.push(path(`M${L + 4} ${cowl + 2.5} H${R - 4}`, FINE)); // tapa de la cajuela
+    if (p.tailgate) parts.push(`<rect ${FINE} x="${L + 3}" y="${cowl + 3}" width="${2 * w - 6}" height="${bottom - 2 - cowl - 3}" rx="1.5"/>`);
   }
   return parts.join('');
 }
@@ -166,15 +168,16 @@ const ODOMETER = [
 
 // ------------------------------------------------------------------------ API
 // Las vistas frontal/trasera son más angostas que las laterales; se amplían para llenar el visor.
-const enlarge = (inner) => `<g transform="translate(50 50) scale(1.3) translate(-50 -52)">${inner}</g>`;
+// Escala 1.5: la carrocería (~52 de ancho) pasa a ocupar ~78 % del visor, centrada según su altura.
+const enlarge = (inner, type) => `<g transform="translate(50 50) scale(1.5) translate(-50 -${(FACE[type].roof + GROUND_Y) / 2})">${inner}</g>`;
 
 function shape(kind, vehicle) {
   const type = VEHICLE_TYPES.includes(vehicle) ? vehicle : 'sedan';
   switch (kind) {
     case 'front':
-      return enlarge(faceView(type, false));
+      return enlarge(faceView(type, false), type);
     case 'rear':
-      return enlarge(faceView(type, true));
+      return enlarge(faceView(type, true), type);
     case 'side-left':
       return sideProfile(type);
     case 'side-right':
