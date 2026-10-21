@@ -343,6 +343,14 @@ button {
   background: rgb(0 0 0 / 0.75);
 }
 
+.verdict .debug {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
 .verdict.ok {
   background: #1f8a4c;
 }

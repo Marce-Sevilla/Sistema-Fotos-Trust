@@ -224,11 +224,21 @@ export function createWizard(root) {
     root.querySelector('[data-action="next"]').disabled = Boolean(blocking);
   }
 
+  // Con `?debug=1` se muestran las medidas de la foto, para calibrar los umbrales con fotos reales.
+  const DEBUG = new URLSearchParams(location.search).has('debug');
+
+  function debugHtml(photo) {
+    const m = photo.metrics;
+    if (!DEBUG || !m) return '';
+    const n = (v, d = 1) => Number(v).toFixed(d);
+    return `<small class="debug">bordes ${n(m.edgeRatio, 2)} · nitidez ${n(m.sharpness, 0)} · luz ${n(m.mean, 0)} · oscuro ${n(m.darkFraction * 100, 0)}% · quemado ${n(m.brightFraction * 100, 0)}% · ${m.width}×${m.height}</small>`;
+  }
+
   function verdictHtml(photo) {
     if (photo.status === 'checking') return `<p class="verdict checking" role="status">${t('validate.checking')}</p>`;
-    if (photo.status === 'ok') return `<p class="verdict ok" role="status">✓ ${escapeHtml(t(photo.reason ?? 'validate.ok', photo.params))}</p>`;
-    if (photo.status === 'fail') return `<p class="verdict fail" role="alert">${t(photo.reason)}</p>`;
-    return photo.reason ? `<p class="verdict warn" role="status">${escapeHtml(t(photo.reason, photo.params))}</p>` : '';
+    if (photo.status === 'ok') return `<p class="verdict ok" role="status">✓ ${escapeHtml(t(photo.reason ?? 'validate.ok', photo.params))}${debugHtml(photo)}</p>`;
+    if (photo.status === 'fail') return `<p class="verdict fail" role="alert">${t(photo.reason)}${debugHtml(photo)}</p>`;
+    return photo.reason ? `<p class="verdict warn" role="status">${escapeHtml(t(photo.reason, photo.params))}${debugHtml(photo)}</p>` : '';
   }
 
   function retake() {

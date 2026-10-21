@@ -15,7 +15,10 @@ export const LIMITS = {
 export const QUALITY_LIMITS = {
   minLongSide: 1280, // px; una foto 720p (1280x720) es el mínimo aceptable
   minShortSide: 720,
-  minSharpness: 120, // varianza del Laplaciano (percentil 90 de los bloques); por debajo es borrosa
+  // Cociente de bordes (ver quality.js): fotos nítidas 3-11, desenfoque leve 1-2.5, fuerte < 1.
+  // Es el criterio principal: no depende de cuánta textura tenga la escena. Se ajusta con `?debug=1`.
+  minEdgeRatio: 2.5,
+  minSharpness: 120, // varianza del Laplaciano (percentil 90 de los bloques); segundo filtro
   maxMean: 215, // luminosidad media máxima (0-255)
   maxBrightFraction: 0.35, // proporción máxima de píxeles quemados (casi blancos)
   // Un tablero o un VIN en sombra son oscuros por naturaleza, así que las fotos de cerca
@@ -33,12 +36,12 @@ export function evaluateResolution(width, height) {
 
 // metrics: resultado de measureQuality(). kind: 'exterior' (foto del vehículo) | 'close' (VIN u odómetro).
 // Devuelve la clave de i18n del problema, o null si está bien.
-export function evaluateQuality({ sharpness, mean, darkFraction, brightFraction }, kind = 'exterior') {
-  const { minSharpness, maxMean, maxBrightFraction, dark } = QUALITY_LIMITS;
+export function evaluateQuality({ edgeRatio, sharpness, mean, darkFraction, brightFraction }, kind = 'exterior') {
+  const { minEdgeRatio, minSharpness, maxMean, maxBrightFraction, dark } = QUALITY_LIMITS;
   const { minMean, maxDarkFraction } = dark[kind];
   if (mean < minMean || darkFraction > maxDarkFraction) return 'validate.tooDark';
   if (mean > maxMean || brightFraction > maxBrightFraction) return 'validate.tooBright';
-  if (sharpness < minSharpness) return 'validate.blurry';
+  if (edgeRatio < minEdgeRatio || sharpness < minSharpness) return 'validate.blurry';
   return null;
 }
 

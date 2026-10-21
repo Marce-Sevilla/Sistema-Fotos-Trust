@@ -22,3 +22,24 @@ for (const [name, view, b, expected] of cases) {
   console.log('ok  -', name);
 }
 
+
+// ---- Nitidez y exposición ----
+import { evaluateQuality, evaluateResolution } from '../src/validation/rules.js';
+
+const q = (over = {}) => ({ edgeRatio: 6, sharpness: 3000, mean: 110, darkFraction: 0.05, brightFraction: 0.02, ...over });
+const check = (name, actual, expected) => {
+  assert.equal(actual, expected, name);
+  console.log('ok  -', name);
+};
+
+check('foto nítida y bien expuesta', evaluateQuality(q()), null);
+check('desenfoque medido por bordes (aunque la escena tenga textura)', evaluateQuality(q({ edgeRatio: 1.54, sharpness: 500 })), 'validate.blurry');
+check('desenfoque fuerte', evaluateQuality(q({ edgeRatio: 0.4, sharpness: 30 })), 'validate.blurry');
+check('muy oscura', evaluateQuality(q({ mean: 30 })), 'validate.tooDark');
+check('muy oscura por proporción de negros', evaluateQuality(q({ darkFraction: 0.6 })), 'validate.tooDark');
+check('sobreexpuesta', evaluateQuality(q({ mean: 230, brightFraction: 0.5 })), 'validate.tooBright');
+check('tablero oscuro es válido de cerca', evaluateQuality(q({ mean: 25, darkFraction: 0.8 }), 'close'), null);
+check('lente tapada se rechaza incluso de cerca', evaluateQuality(q({ mean: 3, darkFraction: 0.99 }), 'close'), 'validate.tooDark');
+check('resolución suficiente (1920x1080)', evaluateResolution(1920, 1080), null);
+check('resolución suficiente en vertical (1080x1920)', evaluateResolution(1080, 1920), null);
+check('resolución baja', evaluateResolution(640, 480), 'validate.lowResolution');
