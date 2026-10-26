@@ -1,13 +1,19 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "sistema-de-fotos-tru",
+  "main": "worker/index.js",
   "compatibility_date": "2026-10-06",
   "observability": {
     "enabled": true
   },
   // Sitio estático: se publica lo que genera `npm run build` (carpeta dist).
+  // Solo /api/* pasa primero por el Worker (el que habla con el CRM); lo demás lo sirve Cloudflare directo.
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
   }
+  // Secretos (se crean en Cloudflare, NO van en este archivo): GHL_TOKEN y GHL_LOCATION_ID.
+  // Opcionales: GHL_API_VERSION, GHL_MEDIA_FOLDER_ID, GHL_PHOTO_FIELD_IDS, GHL_TAGS. Ver README.
 }

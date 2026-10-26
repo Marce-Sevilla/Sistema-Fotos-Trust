@@ -6,7 +6,8 @@ import { validatePhoto } from '../validation/index.js';
 import { loadVehicleModel } from '../validation/vehicle.js';
 import { loadOcr } from '../validation/ocr.js';
 import { colorName, sameVehicleColor } from '../validation/color.js';
-import { t, onLangChange } from '../i18n.js';
+import { createSubmission, contactIdFromUrl } from '../api/submit.js';
+import { t, getLang, onLangChange } from '../i18n.js';
 import { isDebug } from '../debug.js';
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -24,6 +25,9 @@ export function createWizard(root) {
   let vinLocation = ''; // 'windshield' | 'door': dónde se va a fotografiar el VIN
   let index = -1; // -1 = pantalla inicial (datos y tipo de vehículo)
   let stream = null;
+  const linkContactId = contactIdFromUrl(location.search); // contacto del CRM que viene en el enlace (?contact=ID)
+  let submission = null; // envío al CRM en curso (conserva lo ya subido para reintentar)
+  let sendView = null; // { status: 'sending' | 'error' | 'done', progress, error } mientras se envía
 
   // El texto de ayuda y la silueta del VIN dependen de la ubicación elegida.
   const hintFor = (step) => (step.id === 'vin' && vinLocation ? t(`vin.${vinLocation}Hint`) : t(`steps.${step.id}.hint`));
@@ -32,6 +36,7 @@ export function createWizard(root) {
   function render() {
     stopCamera(stream);
     stream = null;
+    if (sendView) return renderSendView();
     if (index < 0) return renderIntro();
     if (index >= STEPS.length) return renderSummary();
 
@@ -239,6 +244,7 @@ export function createWizard(root) {
   function retake() {
     URL.revokeObjectURL(photos[index].url);
     photos[index] = null;
+    if (submission) delete submission.state.urls[STEPS[index].id]; // la versión ya subida quedó vieja: se vuelve a subir
     render();
   }
 
@@ -254,7 +260,83 @@ export function createWizard(root) {
       </ul>
       <footer class="actions">
         <button class="btn secondary" data-action="back">${t('wizard.back')}</button>
-        <button class="btn primary" data-action="submit" disabled title="${t('summary.submitSoon')}">${t('summary.submit')}</button>
+        <button class="btn primary" data-action="submit">${t('summary.submit')}</button>
+      </footer>`;
+  }
+
+  // ---- Envío al CRM -------------------------------------------------------------
+  function buildPayload() {
+    return {
+      profile: { fullName: profile.fullName, email: profile.email, phone: profile.phone, vehicle: profile.vehicle },
+      contactId: linkContactId,
+      vinLocation,
+      lang: getLang(),
+      photos: STEPS.map((step, i) => ({ step: step.id, blob: photos[i].blob, status: photos[i].status, value: photos[i].value, checksumOk: photos[i].checksumOk })),
+    };
+  }
+
+  async function send() {
+    submission ??= createSubmission(buildPayload());
+    sendView = { status: 'sending', progress: { phase: 'contact' } };
+    render();
+    try {
+      await submission.run((progress) => {
+        sendView = { status: 'sending', progress };
+        renderSendView();
+      });
+      sendView = { status: 'done' };
+    } catch (error) {
+      console.error(error);
+      sendView = { status: 'error', error };
+    }
+    render();
+  }
+
+  function sendErrorMessage(error) {
+    if (error?.code === 'network') return t('send.errorNetwork');
+    if (error?.code === 'invalid_contact') return t('send.errorLink');
+    return t('send.errorServer');
+  }
+
+  function renderSendView() {
+    const { status, progress = {}, error } = sendView;
+    const uploaded = (id) => Boolean(submission?.state.urls[id]);
+    const doneCount = STEPS.filter((s) => uploaded(s.id)).length;
+    const failedStep = status === 'error' && error?.stage === 'photo' ? STEPS.find((s) => !uploaded(s.id))?.id : null;
+
+    const title = status === 'done' ? t('done.title') : status === 'error' ? t('send.errorTitle') : t('send.title');
+    const hint = status === 'done' ? '' : status === 'error' ? sendErrorMessage(error) : t('send.hint');
+    const phase =
+      progress.phase === 'photo' ? t('send.phasePhoto', { current: Math.min(doneCount + 1, STEPS.length), total: STEPS.length }) : progress.phase === 'finish' ? t('send.phaseFinish') : t('send.phaseContact');
+
+    root.innerHTML = `
+      <header class="top">
+        <h1>${title}</h1>
+        ${hint ? `<p class="hint" role="${status === 'error' ? 'alert' : 'status'}">${hint}</p>` : ''}
+      </header>
+      <div class="send">
+        ${
+          status === 'done'
+            ? `<div class="done-icon" aria-hidden="true">✓</div>
+               <p class="done-text">${t('done.message')}</p>`
+            : `<div class="send-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${STEPS.length}" aria-valuenow="${doneCount}"><span style="width:${(doneCount / STEPS.length) * 100}%"></span></div>
+               <ul class="send-list">
+                 ${STEPS.map((s) => {
+                   const state = uploaded(s.id) ? 'done' : status === 'sending' && progress.phase === 'photo' && progress.step === s.id ? 'current' : failedStep === s.id ? 'failed' : 'waiting';
+                   const icon = { done: '✓', current: '…', failed: '✗', waiting: '○' }[state];
+                   return `<li class="send-item ${state}"><span class="send-icon" aria-hidden="true">${icon}</span>${t(`steps.${s.id}.title`)}</li>`;
+                 }).join('')}
+               </ul>
+               ${status === 'sending' ? `<p class="send-note" role="status">${phase}</p>` : ''}`
+        }
+      </div>
+      <footer class="actions">
+        ${
+          status === 'error'
+            ? `<button class="btn secondary" data-action="cancel-send">${t('wizard.back')}</button>
+               <button class="btn primary" data-action="retry-send">${t('send.retry')}</button>`
+            : ''
+        }
       </footer>`;
   }
 
@@ -274,6 +356,10 @@ export function createWizard(root) {
       render();
     } else if (action === 'change-vin-location') {
       announced.delete(index); // vuelve a la tarjeta donde se elige la ubicación
+      render();
+    } else if (action === 'submit' || action === 'retry-send') send();
+    else if (action === 'cancel-send') {
+      sendView = null; // vuelve al resumen; lo ya subido se conserva para el próximo intento
       render();
     } else if (action === 'capture') capture();
     else if (action === 'retake') retake();

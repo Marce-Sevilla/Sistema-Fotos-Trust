@@ -565,6 +565,7 @@ button {
   }
 
   .wizard > .viewer,
+  .wizard > .send,
   .wizard > .grid {
     grid-area: viewer;
     margin: 8px 0;
@@ -608,4 +609,99 @@ button {
   .announce-guide {
     max-height: 35%;
   }
+}
+
+/* Envío al CRM: progreso, confirmación y errores */
+.send {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  min-height: 0;
+  padding: 8px 0;
+  overflow-y: auto;
+}
+
+.send-bar {
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.send-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--orange);
+  transition: width 0.3s;
+}
+
+.send-list {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.send-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.send-item.done {
+  color: var(--text);
+}
+
+.send-item.current {
+  color: var(--orange-warm);
+  font-weight: 600;
+}
+
+.send-item.failed {
+  color: #ff9b9b;
+  font-weight: 600;
+}
+
+.send-icon {
+  width: 22px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.send-item.done .send-icon {
+  color: #4ade80;
+}
+
+.send-note {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.done-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 96px;
+  margin-top: 24px;
+  border-radius: 50%;
+  background: var(--orange);
+  font-size: 3rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.done-text {
+  max-width: 320px;
+  margin: 0;
+  text-align: center;
+  line-height: 1.5;
 }
