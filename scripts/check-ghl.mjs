@@ -1,4 +1,4 @@
-// Verifica la conexión REAL con BritoCRM (GoHighLevel) antes de publicar.
+﻿// Verifica la conexión REAL con BritoCRM (GoHighLevel) antes de publicar.
 //
 //   1. Crea el archivo .dev.vars (no se sube a git) con:   GHL_TOKEN=...   GHL_LOCATION_ID=...
 //   2. npm run check:ghl            (o: node scripts/check-ghl.mjs ruta/a/una-foto.jpg)
@@ -20,6 +20,10 @@ function loadVars() {
 }
 
 const vars = loadVars();
+// El ID del campo «Fotos» vive en wrangler.jsonc (no es secreto); .dev.vars puede sobrescribirlo.
+if (!vars.GHL_PHOTOS_FIELD_ID && existsSync('wrangler.jsonc')) {
+  vars.GHL_PHOTOS_FIELD_ID = readFileSync('wrangler.jsonc', 'utf8').match(/"GHL_PHOTOS_FIELD_ID"\s*:\s*"([^"]+)"/)?.[1];
+}
 if (!vars.GHL_TOKEN || !vars.GHL_LOCATION_ID) {
   console.error('Faltan GHL_TOKEN y/o GHL_LOCATION_ID. Créalos en el archivo .dev.vars (una línea por variable).');
   process.exit(1);
@@ -68,22 +72,31 @@ const email = `prueba+${Date.now()}@example.com`;
 const contact = await step('Crear contacto de prueba (upsert)', async () => (await client.upsertContact({ firstName: 'Prueba', lastName: 'Sistema Fotos', email, source: 'Sistema de Fotos (verificación)' })).id);
 if (contact) {
   await step('Leer el contacto', async () => (await client.getContact(contact)).locationId === vars.GHL_LOCATION_ID ? 'pertenece a esta ubicación' : 'ATENCIÓN: otra ubicación');
-  const media = await step('Subir foto a la biblioteca de medios', async () => (await client.uploadMedia(new Blob([photoBytes], { type: 'image/jpeg' }), `verificacion-${Date.now()}.jpg`, vars.GHL_MEDIA_FOLDER_ID || undefined)).url);
+  const fieldId = vars.GHL_PHOTOS_FIELD_ID;
+  let links = [];
+  if (!fieldId) {
+    failures += 1;
+    console.log('✗ Falta GHL_PHOTOS_FIELD_ID (el ID del campo «Fotos»; vive en wrangler.jsonc).');
+  } else {
+    // El CRM reemplaza los archivos del campo en cada subida, así que las 6 fotos van juntas en una sola llamada.
+    const six = Array.from({ length: 6 }, (_, i) => ({ blob: new Blob([photoBytes], { type: 'image/jpeg' }), name: `verificacion-${i + 1}.jpg` }));
+    links = (await step('Subir 6 fotos al campo «Fotos» (una sola llamada)', async () => {
+      const uploaded = await client.uploadContactFiles(contact, fieldId, six);
+      if (uploaded.length !== 6) throw new Error(`el CRM confirmó ${uploaded.length} archivos y se esperaban 6`);
+      return `${uploaded.length} archivos`;
+    })) ? ['ok'] : [];
+    await step('Comprobar en la ficha del contacto que el campo tiene las 6 fotos', async () => {
+      const files = Object.values((await client.getContact(contact)).customFields?.find((entry) => entry.id === fieldId)?.value ?? {});
+      if (files.length !== 6) throw new Error(`el campo tiene ${files.length} archivos y se esperaban 6`);
+      return `${files.length} archivos`;
+    });
+  }
   await step('Crear nota en el contacto', async () => {
-    await client.addNote(contact, `Prueba de verificación del Sistema de Fotos.\nFoto: ${media ?? '(no se pudo subir)'}`);
+    await client.addNote(contact, 'Prueba de verificación del Sistema de Fotos.');
   });
   await step('Poner etiqueta', async () => {
     await client.addTags(contact, ['fotos-vehiculo']);
   });
-
-  let fieldIds = {};
-  try {
-    fieldIds = vars.GHL_PHOTO_FIELD_IDS ? JSON.parse(vars.GHL_PHOTO_FIELD_IDS) : {};
-  } catch {
-    console.log('✗ GHL_PHOTO_FIELD_IDS no es un JSON válido (ej.: {"frente":"abc123"})');
-    failures += 1;
-  }
-  if (fieldIds.frente) await step('Adjuntar foto al campo de archivo "frente"', async () => void (await client.uploadCustomFile(contact, fieldIds.frente, new Blob([photoBytes], { type: 'image/jpeg' }), 'verificacion.jpg')));
 
   await step('Borrar el contacto de prueba', async () => void (await client.deleteContact(contact)));
 }

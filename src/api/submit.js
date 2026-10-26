@@ -1,14 +1,13 @@
 // Envío al CRM a través del Worker (/api/*). El token del CRM nunca pasa por el navegador.
 //
-// El envío se hace en tres etapas, y si algo falla se puede volver a llamar a `run()`: retoma donde quedó
-// (no repite el contacto ni las fotos que ya subieron).
-//   1. /api/start   -> contacto (el del enlace, o uno nuevo por correo/teléfono)
-//   2. /api/photo   -> cada foto, una por una
-//   3. /api/finish  -> nota con las fotos y etiqueta en el contacto
+// El envío tiene dos etapas, y si algo falla se puede volver a llamar a `run()`:
+//   1. /api/start   -> contacto (el del enlace, o uno nuevo por correo/teléfono). Se hace una sola vez.
+//   2. /api/finish  -> las 6 fotos JUNTAS + datos. El CRM reemplaza (no suma) los archivos del campo "Fotos",
+//                      así que repetir esta etapa es seguro: nunca deja fotos duplicadas.
 import { STEPS } from '../wizard/steps.js';
 
 export class SubmitError extends Error {
-  // stage: 'contact' | 'photo' | 'finish'.  code: 'network' o el código que devuelve el servidor.
+  // stage: 'contact' | 'upload'.  code: 'network' o el código que devuelve el servidor.
   constructor(stage, code, status = 0) {
     super(`Envío falló en ${stage}: ${code}`);
     this.stage = stage;
@@ -18,7 +17,7 @@ export class SubmitError extends Error {
 }
 
 const RETRY_DELAYS_MS = [1000, 3000];
-const REQUEST_TIMEOUT_MS = 90_000;
+const REQUEST_TIMEOUT_MS = 120_000;
 const CONTACT_PARAMS = ['contact', 'contactId', 'cid'];
 
 // ID del contacto del CRM que viene en el enlace (?contact=ID); null si no hay o no es válido.
@@ -31,68 +30,73 @@ export function contactIdFromUrl(search) {
   return null;
 }
 
-export function createSubmission(payload, { fetchImpl = (...args) => fetch(...args), sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
-  const state = { contactId: null, urls: {}, finished: false };
+// POST que devuelve { status, data }. Para los archivos usa XMLHttpRequest porque fetch no informa el
+// progreso de la subida. Lanza si no hay conexión o se agota el tiempo.
+function defaultPost(path, body, onProgress) {
+  if (!(body instanceof FormData)) {
+    return fetch(path, { method: 'POST', body, headers: { 'content-type': 'application/json' } }).then(async (response) => ({ status: response.status, data: await response.json().catch(() => ({})) }));
+  }
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', path);
+    xhr.timeout = REQUEST_TIMEOUT_MS;
+    xhr.upload.onprogress = (event) => event.lengthComputable && onProgress?.({ loaded: event.loaded, total: event.total });
+    xhr.onload = () => {
+      let data = {};
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        // respuesta sin JSON: se informa solo el código HTTP
+      }
+      resolve({ status: xhr.status, data });
+    };
+    xhr.onerror = xhr.ontimeout = xhr.onabort = () => reject(new Error('network'));
+    xhr.send(body);
+  });
+}
 
-  async function call(stage, path, body) {
+export function createSubmission(payload, { post = defaultPost, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
+  const state = { contactId: null, finished: false };
+
+  async function call(stage, path, body, onProgress) {
     for (let attempt = 0; ; attempt++) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       let response;
       try {
-        response = await fetchImpl(path, { method: 'POST', body, signal: controller.signal, ...(typeof body === 'string' ? { headers: { 'content-type': 'application/json' } } : {}) });
+        response = await post(path, body, onProgress);
       } catch {
         // Sin conexión o tiempo agotado: se reintenta.
         if (attempt >= RETRY_DELAYS_MS.length) throw new SubmitError(stage, 'network');
         await sleep(RETRY_DELAYS_MS[attempt]);
         continue;
-      } finally {
-        clearTimeout(timer);
       }
       if ((response.status === 429 || response.status >= 500) && attempt < RETRY_DELAYS_MS.length) {
         await sleep(RETRY_DELAYS_MS[attempt]);
         continue;
       }
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new SubmitError(stage, data.error ?? `http_${response.status}`, response.status);
-      return data;
+      if (response.status < 200 || response.status >= 300) throw new SubmitError(stage, response.data?.error ?? `http_${response.status}`, response.status);
+      return response.data;
     }
   }
 
   async function run(onProgress = () => {}) {
     if (state.finished) return state;
-    const total = STEPS.length;
-    const uploaded = () => Object.keys(state.urls).length;
     const { profile, lang, vinLocation } = payload;
 
     if (!state.contactId) {
-      onProgress({ phase: 'contact', done: uploaded(), total });
+      onProgress({ phase: 'contact' });
       const started = await call('contact', '/api/start', JSON.stringify({ ...profile, contactId: payload.contactId ?? undefined }));
       state.contactId = started.contactId;
     }
 
-    for (const photo of payload.photos) {
-      if (state.urls[photo.step]) continue; // ya subió en un intento anterior
-      onProgress({ phase: 'photo', step: photo.step, done: uploaded(), total });
-      const form = new FormData();
-      form.append('contactId', state.contactId);
-      form.append('step', photo.step);
-      form.append('photo', photo.blob, `${photo.step}.jpg`);
-      const result = await call('photo', '/api/photo', form);
-      state.urls[photo.step] = result.url;
-    }
-
-    onProgress({ phase: 'finish', done: uploaded(), total });
     const byStep = Object.fromEntries(payload.photos.map((photo) => [photo.step, photo]));
-    await call(
-      'finish',
-      '/api/finish',
+    const form = new FormData();
+    form.append('contactId', state.contactId);
+    form.append(
+      'meta',
       JSON.stringify({
-        contactId: state.contactId,
         ...profile,
         vinLocation: vinLocation || undefined,
         lang,
-        photos: state.urls,
         statuses: Object.fromEntries(payload.photos.map((photo) => [photo.step, photo.status])),
         readings: {
           vin: byStep.vin?.value ? { value: byStep.vin.value, checksumOk: byStep.vin.checksumOk } : undefined,
@@ -100,8 +104,12 @@ export function createSubmission(payload, { fetchImpl = (...args) => fetch(...ar
         },
       }),
     );
+    for (const step of STEPS) form.append(`photo_${step.id}`, byStep[step.id].blob, `${step.id}.jpg`);
+
+    onProgress({ phase: 'upload', loaded: 0, total: 1 });
+    await call('upload', '/api/finish', form, (progress) => onProgress({ phase: 'upload', ...progress }));
     state.finished = true;
-    onProgress({ phase: 'done', done: uploaded(), total });
+    onProgress({ phase: 'done' });
     return state;
   }
 

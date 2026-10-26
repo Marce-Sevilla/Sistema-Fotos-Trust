@@ -1,11 +1,11 @@
 // API del Worker: recibe los datos y las fotos del wizard y las entrega a BritoCRM (GoHighLevel).
 // El token del CRM vive solo aquí (secreto de Cloudflare); el navegador nunca lo ve.
 //
-//   POST /api/start   { fullName, email, phone, vehicle, contactId? }  -> { contactId, isNew }
-//   POST /api/photo   multipart: contactId, step, photo                -> { step, url }
-//   POST /api/finish  { contactId, vehicle, vinLocation, photos, ... } -> { ok, warnings }
+//   POST /api/start   { fullName, email, phone, vehicle, contactId? }   -> { contactId, isNew }
+//   POST /api/finish  multipart: contactId, meta (JSON), photo_<paso> x6 -> { ok, warnings }
 //
-// Las fotos se suben una por una: así hay progreso, se reintenta solo la que falla y cada petición es pequeña.
+// Las 6 fotos se adjuntan al campo personalizado "Fotos" del contacto (visible en su ficha). El CRM
+// REEMPLAZA los archivos del campo en cada subida, así que las 6 van juntas en una sola llamada.
 import { STEPS } from '../src/wizard/steps.js';
 import { VEHICLE_TYPES } from '../src/wizard/guides.js';
 import { validateProfile } from '../src/wizard/profile.js';
@@ -16,11 +16,8 @@ const VIN_LOCATIONS = ['windshield', 'door'];
 const CONTACT_ID = /^[A-Za-z0-9]{8,40}$/;
 const PHOTO_LIMITS = { minBytes: 10_000, maxBytes: 10 * 1024 * 1024 };
 const MAX_JSON_BYTES = 8 * 1024;
-const MAX_PHOTO_REQUEST_BYTES = PHOTO_LIMITS.maxBytes + 64 * 1024;
+const MAX_FINISH_BYTES = 42 * 1024 * 1024; // 6 fotos de hasta 10 MB más los datos
 const DEFAULT_TAGS = ['fotos-vehiculo'];
-// Las URL que devuelve el CRM para los archivos subidos; no se aceptan enlaces de otros sitios en la nota.
-// (filesafe.space es donde el CRM guarda hoy los archivos; las demás son sus dominios históricos.)
-const ALLOWED_PHOTO_HOSTS = [/(^|\.)filesafe\.space$/, /(^|\.)googleapis\.com$/, /(^|\.)leadconnectorhq\.com$/, /(^|\.)msgsndr\.com$/];
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
@@ -39,25 +36,21 @@ const STEP_LABELS = {
 const VEHICLE_LABELS = { sedan: 'Sedán', suv: 'SUV', pickup: 'Pickup', hatchback: 'Hatchback', minivan: 'Minivan' };
 const LOCATION_LABELS = { windshield: 'parabrisas', door: 'puerta' };
 
-export function isAllowedPhotoUrl(value) {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' && ALLOWED_PHOTO_HOSTS.some((host) => host.test(url.hostname));
-  } catch {
-    return false;
-  }
-}
+// Nombre con el que se guarda cada foto en el CRM, y para reconocerla en la respuesta.
+export const photoFileName = (step) => `${step}.jpg`;
 
-// Texto de la nota que queda en el contacto del CRM.
+// Texto de la nota que queda en el contacto del CRM. `links` (opcional): { paso: enlaceDeLaFoto }.
 export function buildNote(data, now = new Date()) {
-  const { profile, vehicle, vinLocation, photos, statuses = {}, readings = {} } = data;
+  const { profile, vehicle, vinLocation, links = {}, statuses = {}, readings = {} } = data;
   const lines = ['📸 Fotos del vehículo (Sistema de Fotos)', ''];
   lines.push(`Cliente: ${profile.fullName} · ${profile.email} · ${profile.phone}`);
   lines.push(`Vehículo: ${VEHICLE_LABELS[vehicle] ?? vehicle}`);
   lines.push(`Fecha: ${now.toISOString().replace('T', ' ').slice(0, 16)} UTC`, '');
+  lines.push('Las 6 fotos están en el campo «Fotos» de este contacto.');
   for (const step of STEP_IDS) {
     const extra = step === 'vin' && vinLocation ? ` (en ${LOCATION_LABELS[vinLocation]})` : '';
-    lines.push(`${STEP_LABELS[step]}${extra}: ${photos[step]}`);
+    if (links[step]) lines.push(`${STEP_LABELS[step]}${extra}: ${links[step]}`);
+    else if (extra) lines.push(`${STEP_LABELS[step]}${extra}`);
   }
 
   const unverified = STEP_IDS.filter((step) => statuses[step] === 'unverified').map((step) => STEP_LABELS[step]);
@@ -73,16 +66,15 @@ export function buildNote(data, now = new Date()) {
 
 // ---- Entrada y validación -------------------------------------------------------------
 
-async function readJson(request) {
-  const text = await request.text();
-  if (text.length > MAX_JSON_BYTES) return null;
+const parseJson = (text) => {
+  if (typeof text !== 'string' || text.length > MAX_JSON_BYTES) return null;
   try {
     const data = JSON.parse(text);
     return data && typeof data === 'object' ? data : null;
   } catch {
     return null;
   }
-}
+};
 
 async function looksLikeJpeg(file) {
   const bytes = new Uint8Array(await file.slice(0, 3).arrayBuffer());
@@ -91,15 +83,6 @@ async function looksLikeJpeg(file) {
 
 function clientFor(env, fetchImpl) {
   return createGhlClient({ token: env.GHL_TOKEN, locationId: env.GHL_LOCATION_ID, version: env.GHL_API_VERSION || undefined, fetchImpl });
-}
-
-function photoFieldIds(env) {
-  try {
-    const map = env.GHL_PHOTO_FIELD_IDS ? JSON.parse(env.GHL_PHOTO_FIELD_IDS) : {};
-    return map && typeof map === 'object' ? map : {};
-  } catch {
-    return {};
-  }
 }
 
 // Comprueba que el contacto exista en esta ubicación del CRM.
@@ -116,7 +99,7 @@ async function verifyContact(client, env, contactId) {
 // ---- Endpoints ------------------------------------------------------------------------
 
 async function handleStart(request, env, fetchImpl) {
-  const body = await readJson(request);
+  const body = parseJson(await request.text());
   if (!body) return fail('invalid_request', 'Solicitud no válida.');
   if (body.hp) return fail('invalid_request', 'Solicitud no válida.'); // campo trampa para bots
 
@@ -144,8 +127,10 @@ async function handleStart(request, env, fetchImpl) {
   return json({ contactId: result.id, isNew: result.isNew });
 }
 
-async function handlePhoto(request, env, fetchImpl) {
-  if (Number(request.headers.get('content-length') ?? 0) > MAX_PHOTO_REQUEST_BYTES) return fail('too_large', 'La foto es demasiado grande.', 413);
+async function handleFinish(request, env, fetchImpl) {
+  if (!env.GHL_PHOTOS_FIELD_ID) return fail('not_configured', 'Falta configurar el campo «Fotos» del CRM.', 500);
+  if (Number(request.headers.get('content-length') ?? 0) > MAX_FINISH_BYTES) return fail('too_large', 'Las fotos son demasiado pesadas.', 413);
+
   let form;
   try {
     form = await request.formData();
@@ -154,52 +139,40 @@ async function handlePhoto(request, env, fetchImpl) {
   }
 
   const contactId = String(form.get('contactId') ?? '');
-  const step = String(form.get('step') ?? '');
-  const photo = form.get('photo');
-  if (!CONTACT_ID.test(contactId) || !STEP_IDS.includes(step) || !photo || typeof photo === 'string') return fail('invalid_request', 'Solicitud no válida.');
-  if (photo.size < PHOTO_LIMITS.minBytes || photo.size > PHOTO_LIMITS.maxBytes) return fail('invalid_photo', 'La foto no tiene un tamaño válido.', 413);
-  if (!(await looksLikeJpeg(photo))) return fail('invalid_photo', 'La foto debe ser una imagen JPEG.', 415);
+  const meta = parseJson(form.get('meta'));
+  if (!CONTACT_ID.test(contactId) || !meta) return fail('invalid_request', 'Solicitud no válida.');
 
-  const client = clientFor(env, fetchImpl);
-  const name = `${contactId}-${step}-${Date.now()}.jpg`;
-  const media = await client.uploadMedia(photo, name, env.GHL_MEDIA_FOLDER_ID || undefined);
-  if (!media.url) return fail('crm_error', 'El CRM no devolvió la dirección de la foto.', 502);
+  const profile = { fullName: String(meta.fullName ?? ''), email: String(meta.email ?? ''), phone: String(meta.phone ?? ''), vehicle: String(meta.vehicle ?? '') };
+  const vinLocation = String(meta.vinLocation ?? '');
+  if (!VEHICLE_TYPES.includes(profile.vehicle) || (vinLocation && !VIN_LOCATIONS.includes(vinLocation))) return fail('invalid_request', 'Solicitud no válida.');
 
-  // Opcional: si Trust creó campos de archivo en el contacto, la foto también se adjunta ahí.
-  const warnings = [];
-  const fieldId = photoFieldIds(env)[step];
-  if (fieldId) {
-    try {
-      await client.uploadCustomFile(contactId, fieldId, photo, name);
-    } catch {
-      warnings.push('custom_field_upload_failed');
-    }
-  }
-  return json({ step, url: media.url, warnings });
-}
-
-async function handleFinish(request, env, fetchImpl) {
-  const body = await readJson(request);
-  if (!body) return fail('invalid_request', 'Solicitud no válida.');
-
-  const contactId = String(body.contactId ?? '');
-  const photos = body.photos ?? {};
-  const profile = { fullName: String(body.fullName ?? ''), email: String(body.email ?? ''), phone: String(body.phone ?? ''), vehicle: String(body.vehicle ?? '') };
-  const vinLocation = String(body.vinLocation ?? '');
-  const photosValid = STEP_IDS.every((step) => typeof photos[step] === 'string' && isAllowedPhotoUrl(photos[step]));
-  if (!CONTACT_ID.test(contactId) || !photosValid || !VEHICLE_TYPES.includes(profile.vehicle) || (vinLocation && !VIN_LOCATIONS.includes(vinLocation))) {
-    return fail('invalid_request', 'Solicitud no válida.');
+  // Las 6 fotos son obligatorias: deben ser JPEG y de tamaño razonable.
+  const files = [];
+  for (const step of STEP_IDS) {
+    const photo = form.get(`photo_${step}`);
+    if (!photo || typeof photo === 'string') return fail('invalid_request', 'Falta una foto.');
+    if (photo.size < PHOTO_LIMITS.minBytes || photo.size > PHOTO_LIMITS.maxBytes) return fail('invalid_photo', 'Una foto no tiene un tamaño válido.', 413);
+    if (!(await looksLikeJpeg(photo))) return fail('invalid_photo', 'Las fotos deben ser imágenes JPEG.', 415);
+    files.push({ step, blob: photo, name: photoFileName(step) });
   }
 
   const client = clientFor(env, fetchImpl);
   if (!(await verifyContact(client, env, contactId))) return fail('invalid_contact', 'El contacto no existe.');
 
-  const note = buildNote({ profile, vehicle: profile.vehicle, vinLocation, photos, statuses: body.statuses ?? {}, readings: body.readings ?? {} });
+  const uploaded = await client.uploadContactFiles(contactId, env.GHL_PHOTOS_FIELD_ID, files);
+  const warnings = [];
+  const links = {};
+  for (const step of STEP_IDS) {
+    const match = uploaded.find((file) => file.name === photoFileName(step));
+    if (match?.url) links[step] = match.url;
+  }
+  if (uploaded.length !== STEP_IDS.length) warnings.push('photo_count_mismatch'); // el CRM no confirmó las 6 en su respuesta
+
+  const note = buildNote({ profile, vehicle: profile.vehicle, vinLocation, links, statuses: meta.statuses ?? {}, readings: meta.readings ?? {} });
   await client.addNote(contactId, note);
 
-  // La etiqueta permite que el CRM dispare automatizaciones; si falla, las fotos ya quedaron guardadas en la nota.
-  const warnings = [];
-  const tags = (env.GHL_TAGS ? String(env.GHL_TAGS).split(',').map((tag) => tag.trim()).filter(Boolean) : DEFAULT_TAGS);
+  // La etiqueta permite que el CRM dispare automatizaciones; si falla, las fotos y la nota ya quedaron guardadas.
+  const tags = env.GHL_TAGS ? String(env.GHL_TAGS).split(',').map((tag) => tag.trim()).filter(Boolean) : DEFAULT_TAGS;
   try {
     await client.addTags(contactId, tags);
   } catch {
@@ -210,7 +183,7 @@ async function handleFinish(request, env, fetchImpl) {
 
 // ---- Enrutador --------------------------------------------------------------------------
 
-const ROUTES = { '/api/start': handleStart, '/api/photo': handlePhoto, '/api/finish': handleFinish };
+const ROUTES = { '/api/start': handleStart, '/api/finish': handleFinish };
 
 export async function route(request, env, fetchImpl = fetch) {
   const url = new URL(request.url);

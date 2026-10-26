@@ -37,7 +37,7 @@ function devApi() {
 
         const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
         const request = new Request(url, { method: req.method, headers: req.headers, ...(hasBody ? { body: Readable.toWeb(req), duplex: 'half' } : {}) });
-        const response = await route(request, { GHL_TOKEN: 'dev-token', GHL_LOCATION_ID: 'dev-location' }, mock.fetch);
+        const response = await route(request, { GHL_TOKEN: 'dev-token', GHL_LOCATION_ID: 'dev-location', GHL_PHOTOS_FIELD_ID: 'devfield1' }, mock.fetch);
         res.statusCode = response.status;
         response.headers.forEach((value, key) => res.setHeader(key, value));
         res.end(Buffer.from(await response.arrayBuffer()));

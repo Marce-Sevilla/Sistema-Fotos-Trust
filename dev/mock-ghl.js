@@ -6,6 +6,7 @@
 //   createMockGhl({ failures: { '/medias/upload-file': { status: 500, times: 1 } } })
 export function createMockGhl({ token = 'dev-token', locationId = 'dev-location', failures = {} } = {}) {
   const calls = [];
+  const fieldValues = {}; // archivos que tiene cada campo de cada contacto ("contacto:campo" -> archivos)
   const remaining = Object.fromEntries(Object.entries(failures).map(([path, f]) => [path, { ...f }]));
   let mediaCount = 0;
 
@@ -50,9 +51,21 @@ export function createMockGhl({ token = 'dev-token', locationId = 'dev-location'
       mediaCount += 1;
       return reply({ fileId: `file${mediaCount}`, url: `https://storage.googleapis.com/mock-bucket/${file?.filename ?? `file${mediaCount}.jpg`}` });
     }
-    if (method === 'POST' && url.pathname === '/forms/upload-custom-files') return reply({ contact: { id: record.query.contactId } });
+    if (method === 'POST' && url.pathname === '/forms/upload-custom-files') {
+      // Igual que el CRM real: cada subida REEMPLAZA los archivos del campo (no los suma) y la respuesta
+      // devuelve el valor del campo: { uuid: { meta: { originalname }, url } }.
+      const files = {};
+      let fieldId;
+      for (const [key, value] of init.body.entries()) {
+        const [id, uuid] = key.split('_');
+        fieldId = id;
+        files[uuid] = { meta: { fieldname: id, originalname: value.name, mimetype: value.type, size: value.size, uuid }, url: `https://services.leadconnectorhq.com/contacts/file/download?id=mock-${uuid}` };
+      }
+      fieldValues[`${record.query.contactId}:${fieldId}`] = files;
+      return reply({ succeeded: true, contact: { id: record.query.contactId, customFields: [{ id: fieldId, value: files }] } }, 201);
+    }
     return reply({ message: `No mock for ${method} ${url.pathname}` }, 404);
   }
 
-  return { fetch: mockFetch, calls };
+  return { fetch: mockFetch, calls, fieldValues };
 }

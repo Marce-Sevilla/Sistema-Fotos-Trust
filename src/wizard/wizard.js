@@ -1,4 +1,4 @@
-import { STEPS } from './steps.js';
+﻿import { STEPS } from './steps.js';
 import { guideSvg, vehicleIcon, VEHICLE_TYPES } from './guides.js';
 import { validateProfile } from './profile.js';
 import { cameraSupported, startCamera, stopCamera, captureFrame, pickPhotoFile } from './camera.js';
@@ -244,7 +244,6 @@ export function createWizard(root) {
   function retake() {
     URL.revokeObjectURL(photos[index].url);
     photos[index] = null;
-    if (submission) delete submission.state.urls[STEPS[index].id]; // la versión ya subida quedó vieja: se vuelve a subir
     render();
   }
 
@@ -300,14 +299,13 @@ export function createWizard(root) {
 
   function renderSendView() {
     const { status, progress = {}, error } = sendView;
-    const uploaded = (id) => Boolean(submission?.state.urls[id]);
-    const doneCount = STEPS.filter((s) => uploaded(s.id)).length;
-    const failedStep = status === 'error' && error?.stage === 'photo' ? STEPS.find((s) => !uploaded(s.id))?.id : null;
 
     const title = status === 'done' ? t('done.title') : status === 'error' ? t('send.errorTitle') : t('send.title');
     const hint = status === 'done' ? '' : status === 'error' ? sendErrorMessage(error) : t('send.hint');
-    const phase =
-      progress.phase === 'photo' ? t('send.phasePhoto', { current: Math.min(doneCount + 1, STEPS.length), total: STEPS.length }) : progress.phase === 'finish' ? t('send.phaseFinish') : t('send.phaseContact');
+
+    // La barra refleja los bytes subidos. Al llegar al 100 % el servidor todavía entrega todo al CRM.
+    const percent = progress.phase === 'upload' && progress.total ? Math.min(100, Math.round((progress.loaded / progress.total) * 100)) : 0;
+    const phase = progress.phase === 'upload' ? (percent >= 100 ? t('send.phaseFinish') : t('send.phaseUpload', { percent })) : t('send.phaseContact');
 
     root.innerHTML = `
       <header class="top">
@@ -319,15 +317,10 @@ export function createWizard(root) {
           status === 'done'
             ? `<div class="done-icon" aria-hidden="true">✓</div>
                <p class="done-text">${t('done.message')}</p>`
-            : `<div class="send-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${STEPS.length}" aria-valuenow="${doneCount}"><span style="width:${(doneCount / STEPS.length) * 100}%"></span></div>
-               <ul class="send-list">
-                 ${STEPS.map((s) => {
-                   const state = uploaded(s.id) ? 'done' : status === 'sending' && progress.phase === 'photo' && progress.step === s.id ? 'current' : failedStep === s.id ? 'failed' : 'waiting';
-                   const icon = { done: '✓', current: '…', failed: '✗', waiting: '○' }[state];
-                   return `<li class="send-item ${state}"><span class="send-icon" aria-hidden="true">${icon}</span>${t(`steps.${s.id}.title`)}</li>`;
-                 }).join('')}
-               </ul>
-               ${status === 'sending' ? `<p class="send-note" role="status">${phase}</p>` : ''}`
+            : status === 'sending'
+              ? `<div class="send-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><span style="width:${percent}%"></span></div>
+                 <p class="send-note" role="status">${phase}</p>`
+              : ''
         }
       </div>
       <footer class="actions">

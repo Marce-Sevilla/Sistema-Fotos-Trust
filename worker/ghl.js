@@ -93,21 +93,15 @@ export function createGhlClient({
       return { id: data.contact?.id, isNew: Boolean(data.new) };
     },
 
-    // Sube una foto a la biblioteca de medios. Devuelve { fileId, url }.
-    async uploadMedia(blob, name, parentId) {
+    // Adjunta archivos a un campo personalizado de tipo archivo del contacto (queda en su ficha).
+    // IMPORTANTE: cada llamada REEMPLAZA los archivos que el campo tuviera, no los suma. Por eso todos los
+    // archivos deben ir juntos en una sola llamada. Devuelve [{ name, url }] con lo que quedó en el campo.
+    async uploadContactFiles(contactId, fieldId, files) {
       const form = new FormData();
-      form.append('file', blob, name);
-      form.append('name', name);
-      if (parentId) form.append('parentId', parentId);
-      const data = await request('uploadMedia', '/medias/upload-file', { method: 'POST', form });
-      return { fileId: data.fileId, url: data.url };
-    },
-
-    // Adjunta un archivo a un campo personalizado de tipo archivo del contacto (opcional).
-    async uploadCustomFile(contactId, fieldId, blob, name) {
-      const form = new FormData();
-      form.append(`${fieldId}_${crypto.randomUUID()}`, blob, name);
-      await request('uploadCustomFile', '/forms/upload-custom-files', { method: 'POST', form, query: { contactId, locationId } });
+      for (const { blob, name } of files) form.append(`${fieldId}_${crypto.randomUUID()}`, blob, name);
+      const data = await request('uploadFiles', '/forms/upload-custom-files', { method: 'POST', form, query: { contactId, locationId } });
+      const field = (data.contact?.customFields ?? []).find((entry) => entry.id === fieldId);
+      return Object.values(field?.value ?? {}).map((file) => ({ name: file.meta?.originalname, url: file.url }));
     },
 
     async addNote(contactId, body) {
