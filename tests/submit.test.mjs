@@ -1,4 +1,4 @@
-// Prueba el envío completo: cliente del navegador (src/api/submit.js) -> Worker (worker/api.js) -> CRM simulado.
+﻿// Prueba el envío completo: cliente del navegador (src/api/submit.js) -> Worker (worker/api.js) -> CRM simulado.
 import assert from 'node:assert/strict';
 import { createSubmission, contactIdFromUrl, SubmitError } from '../src/api/submit.js';
 import { route } from '../worker/api.js';
@@ -55,7 +55,7 @@ await test('contactIdFromUrl ignora valores inválidos', () => {
   assert.equal(contactIdFromUrl(''), null);
 });
 
-await test('envío completo: contacto, 6 fotos en una sola subida, nota y etiqueta', async () => {
+await test('envío completo: contacto y 6 fotos en una sola subida (sin nota ni etiquetas)', async () => {
   const { submission, mock, sent } = setup();
   const phases = [];
   const state = await submission.run((p) => phases.push(p.phase));
@@ -64,8 +64,7 @@ await test('envío completo: contacto, 6 fotos en una sola subida, nota y etique
   assert.equal(uploads(mock).length, 1);
   assert.equal(uploads(mock)[0].form.length, 6);
   assert.equal(Object.keys(mock.fieldValues[`${state.contactId}:FIELD123`]).length, 6);
-  assert.ok(mock.calls.some((c) => c.path.endsWith('/notes')));
-  assert.ok(mock.calls.some((c) => c.path.endsWith('/tags')));
+  assert.ok(!mock.calls.some((c) => c.path.endsWith('/notes') || c.path.endsWith('/tags')), 'solo se suben las fotos');
   assert.ok(!mock.calls.some((c) => c.path.startsWith('/medias')), 'no se usa la biblioteca de medios');
   assert.deepEqual([...new Set(phases)], ['contact', 'upload', 'done']);
 });
@@ -81,7 +80,7 @@ await test('con el contacto del enlace se verifica y no se crea otro', async () 
   const { submission, mock } = setup({ contactId: 'link12345678' });
   await submission.run();
   assert.ok(!mock.calls.some((c) => c.path === '/contacts/upsert'));
-  assert.ok(mock.calls.some((c) => c.path === '/contacts/link12345678/notes'));
+  assert.equal(uploads(mock)[0].query.contactId, 'link12345678');
 });
 
 await test('si la subida falla, el reintento no vuelve a crear el contacto', async () => {

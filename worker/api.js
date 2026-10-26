@@ -6,6 +6,7 @@
 //
 // Las 6 fotos se adjuntan al campo personalizado "Fotos" del contacto (visible en su ficha). El CRM
 // REEMPLAZA los archivos del campo en cada subida, así que las 6 van juntas en una sola llamada.
+// Opcional (apagado por defecto): GHL_ADD_NOTE=true escribe una nota con los datos y GHL_TAGS pone etiquetas.
 import { STEPS } from '../src/wizard/steps.js';
 import { VEHICLE_TYPES } from '../src/wizard/guides.js';
 import { validateProfile } from '../src/wizard/profile.js';
@@ -17,7 +18,6 @@ const CONTACT_ID = /^[A-Za-z0-9]{8,40}$/;
 const PHOTO_LIMITS = { minBytes: 10_000, maxBytes: 10 * 1024 * 1024 };
 const MAX_JSON_BYTES = 8 * 1024;
 const MAX_FINISH_BYTES = 42 * 1024 * 1024; // 6 fotos de hasta 10 MB más los datos
-const DEFAULT_TAGS = ['fotos-vehiculo'];
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
@@ -168,15 +168,20 @@ async function handleFinish(request, env, fetchImpl) {
   }
   if (uploaded.length !== STEP_IDS.length) warnings.push('photo_count_mismatch'); // el CRM no confirmó las 6 en su respuesta
 
-  const note = buildNote({ profile, vehicle: profile.vehicle, vinLocation, links, statuses: meta.statuses ?? {}, readings: meta.readings ?? {} });
-  await client.addNote(contactId, note);
+  // Por defecto solo se suben las fotos. La nota y las etiquetas son opcionales (se activan con variables).
+  if (env.GHL_ADD_NOTE === 'true') {
+    const note = buildNote({ profile, vehicle: profile.vehicle, vinLocation, links, statuses: meta.statuses ?? {}, readings: meta.readings ?? {} });
+    await client.addNote(contactId, note);
+  }
 
-  // La etiqueta permite que el CRM dispare automatizaciones; si falla, las fotos y la nota ya quedaron guardadas.
-  const tags = env.GHL_TAGS ? String(env.GHL_TAGS).split(',').map((tag) => tag.trim()).filter(Boolean) : DEFAULT_TAGS;
-  try {
-    await client.addTags(contactId, tags);
-  } catch {
-    warnings.push('tag_failed');
+  // Las etiquetas permiten que el CRM dispare automatizaciones; si fallan, las fotos ya quedaron guardadas.
+  const tags = env.GHL_TAGS ? String(env.GHL_TAGS).split(',').map((tag) => tag.trim()).filter(Boolean) : [];
+  if (tags.length) {
+    try {
+      await client.addTags(contactId, tags);
+    } catch {
+      warnings.push('tag_failed');
+    }
   }
   return json({ ok: true, warnings });
 }

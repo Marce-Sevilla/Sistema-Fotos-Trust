@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict';
+﻿import assert from 'node:assert/strict';
 import { route, buildNote, photoFileName } from '../worker/api.js';
 import { normalizePhone, splitName } from '../worker/ghl.js';
 import { createMockGhl } from '../dev/mock-ghl.js';
@@ -99,8 +99,14 @@ await test('finish no usa la biblioteca de medios', async () => {
   const { mock } = await call(finishReq());
   assert.ok(!mock.calls.some((c) => c.path.startsWith('/medias')));
 });
-await test('finish escribe la nota con los datos, enlaces y lecturas, y pone la etiqueta', async () => {
-  const { mock } = await call(finishReq());
+await test('por defecto finish solo sube las fotos: sin nota ni etiquetas', async () => {
+  const { mock, status } = await call(finishReq());
+  assert.equal(status, 200);
+  assert.ok(!mock.calls.some((c) => c.path.endsWith('/notes')));
+  assert.ok(!mock.calls.some((c) => c.path.endsWith('/tags')));
+});
+await test('con GHL_ADD_NOTE y GHL_TAGS escribe la nota con los datos, enlaces y lecturas, y pone la etiqueta', async () => {
+  const { mock } = await call(finishReq(), { ...ENV, GHL_ADD_NOTE: 'true', GHL_TAGS: 'fotos-vehiculo' });
   const note = mock.calls.find((c) => c.path === '/contacts/abc12345/notes').json.body;
   assert.match(note, /campo «Fotos»/);
   assert.match(note, /Vehículo: SUV/);
@@ -134,7 +140,7 @@ await test('finish avisa si falta configurar el campo «Fotos»', async () => {
 });
 await test('finish tolera que falle la etiqueta (fotos y nota ya quedaron)', async () => {
   const mock = createMockGhl({ failures: { '/contacts/abc12345/tags': { status: 400, times: 5 } } });
-  const { status, body } = await call(finishReq(), ENV, mock);
+  const { status, body } = await call(finishReq(), { ...ENV, GHL_TAGS: 'fotos-vehiculo' }, mock);
   assert.equal(status, 200);
   assert.deepEqual(body.warnings, ['tag_failed']);
 });

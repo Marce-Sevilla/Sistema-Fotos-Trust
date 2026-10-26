@@ -37,8 +37,7 @@ Modo de diagnóstico: abrir el sitio con `?debug=1` (o tocar 5 veces el logo) mu
 Por cada persona que termina el wizard:
 - **Contacto:** el del enlace (`?contact=ID`) o, si no hay, se crea/actualiza por correo y teléfono.
 - **Fotos:** las 6 en el campo personalizado **«Fotos»** (tipo archivo) del contacto: se ven en su ficha. No se usa la biblioteca de medios.
-- **Nota en el contacto** con los enlaces de las fotos, tipo de vehículo, ubicación del VIN, qué fotos quedaron sin verificar y las lecturas del OCR (solo de referencia).
-- **Etiqueta** `fotos-vehiculo`, útil para disparar automatizaciones (por ejemplo la Fase 2).
+- **Solo las fotos**, por ahora. Opcional (apagado por defecto): `GHL_ADD_NOTE=true` escribe además una nota con los enlaces, el tipo de vehículo, la ubicación del VIN, qué fotos quedaron sin verificar y las lecturas del OCR; `GHL_TAGS=etiqueta1,etiqueta2` pone etiquetas al contacto (útil para automatizaciones, p. ej. la Fase 2).
 
 ### Enlace con el contacto
 Si Trust envía el enlace desde un workflow del CRM, puede incluir el ID del contacto:
@@ -52,8 +51,8 @@ Así las fotos quedan en ese contacto sin crear uno nuevo. Sin el parámetro, se
    ```bash
    npm run check:ghl
    ```
-   Crea un contacto de prueba, sube 6 fotos al campo «Fotos», comprueba que la ficha las muestra, escribe la nota, pone la etiqueta y borra el contacto. Cada paso dice si funcionó y, si no, la causa probable.
-4. **Producción.** En Cloudflare → *Workers & Pages → sistema-de-fotos-tru → Settings → Variables and Secrets*, crea como **Secret**: `GHL_TOKEN` y `GHL_LOCATION_ID`. Los secretos se conservan en cada despliegue. El ID del campo «Fotos» (`GHL_PHOTOS_FIELD_ID`) ya está en `wrangler.jsonc`. Opcionales: `GHL_API_VERSION`, `GHL_TAGS`.
+   Crea un contacto de prueba, sube 6 fotos al campo «Fotos», comprueba que la ficha las muestra, y borra el contacto. Cada paso dice si funcionó y, si no, la causa probable.
+4. **Producción.** En Cloudflare → *Workers & Pages → sistema-de-fotos-tru → Settings → Variables and Secrets*, crea como **Secret**: `GHL_TOKEN` y `GHL_LOCATION_ID`. Los secretos se conservan en cada despliegue. El ID del campo «Fotos» (`GHL_PHOTOS_FIELD_ID`) ya está en `wrangler.jsonc`. Opcionales: `GHL_API_VERSION`, `GHL_ADD_NOTE`, `GHL_TAGS`.
 5. Despliega (cada `push` a `main` lo hace) y haz una prueba real con tu teléfono.
 
 ### Probar el sitio y el servidor juntos con el CRM real

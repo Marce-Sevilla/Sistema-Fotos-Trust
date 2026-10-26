@@ -3,7 +3,7 @@
 //   1. Crea el archivo .dev.vars (no se sube a git) con:   GHL_TOKEN=...   GHL_LOCATION_ID=...
 //   2. npm run check:ghl            (o: node scripts/check-ghl.mjs ruta/a/una-foto.jpg)
 //
-// Crea un contacto de prueba, sube una foto, escribe la nota, pone la etiqueta y borra el contacto.
+// Crea un contacto de prueba, sube una foto, y borra el contacto.
 // Cada paso dice si funcionó; si falla, indica la causa más probable (token, permisos, formato).
 import { readFileSync, existsSync } from 'node:fs';
 import { createGhlClient, GhlError } from '../worker/ghl.js';
@@ -91,13 +91,6 @@ if (contact) {
       return `${files.length} archivos`;
     });
   }
-  await step('Crear nota en el contacto', async () => {
-    await client.addNote(contact, 'Prueba de verificación del Sistema de Fotos.');
-  });
-  await step('Poner etiqueta', async () => {
-    await client.addTags(contact, ['fotos-vehiculo']);
-  });
-
   await step('Borrar el contacto de prueba', async () => void (await client.deleteContact(contact)));
 }
 
