@@ -115,6 +115,11 @@ async function handleStart(request, env, fetchImpl) {
 
   const { firstName, lastName } = splitName(profile.fullName);
   const contact = { firstName, lastName, email: profile.email.trim(), phone: normalizePhone(profile.phone), source: 'Sistema de Fotos' };
+
+  // Si la persona ya es un contacto (por correo o teléfono), se usa tal cual: no se modifica ninguno de sus datos.
+  const existing = await client.findContact({ email: contact.email, phone: contact.phone });
+  if (existing?.id) return json({ contactId: existing.id, isNew: false });
+
   let result;
   try {
     result = await client.upsertContact(contact);

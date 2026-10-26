@@ -83,8 +83,19 @@ export function createGhlClient({
       return data.contact ?? data;
     },
 
-    // Crea el contacto o actualiza el existente (según correo/teléfono). No se envían `tags` aquí:
-    // en el upsert reemplazarían todas las etiquetas que el contacto ya tenga.
+    // Busca un contacto que ya exista por correo y/o teléfono, SIN modificarlo. Devuelve el contacto o null
+    // (el CRM responde 200 con `contact: null` cuando no hay coincidencia).
+    async findContact({ email, phone }) {
+      const query = { locationId };
+      if (email) query.email = email;
+      if (phone) query.number = phone;
+      const data = await request('findContact', '/contacts/search/duplicate', { query });
+      return data.contact ?? null;
+    },
+
+    // Crea un contacto NUEVO. Se usa solo después de comprobar con findContact que no existe: el upsert
+    // también actualiza al existente (nombre, fuente...) y no queremos tocar datos de clientes que ya están.
+    // No se envían `tags`: en el upsert reemplazarían todas las etiquetas del contacto.
     async upsertContact({ firstName, lastName, email, phone, source }) {
       const data = await request('upsertContact', '/contacts/upsert', {
         method: 'POST',

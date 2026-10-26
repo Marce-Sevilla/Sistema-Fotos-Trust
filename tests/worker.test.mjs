@@ -60,6 +60,24 @@ await test('start crea el contacto y no envía etiquetas (reemplazarían las exi
   assert.equal(upsert.json.tags, undefined);
   assert.equal(upsert.headers.authorization, 'Bearer dev-token');
 });
+await test('start primero busca si ya existe y solo entonces crea', async () => {
+  const { mock } = await call(post('/api/start', PROFILE));
+  const order = mock.calls.map((c) => `${c.method} ${c.path}`);
+  assert.ok(order.indexOf('GET /contacts/search/duplicate') < order.indexOf('POST /contacts/upsert'));
+  const search = mock.calls.find((c) => c.path === '/contacts/search/duplicate');
+  assert.deepEqual(search.query, { locationId: 'dev-location', email: 'juan@example.com', number: '+13055550123' });
+});
+await test('start con un contacto que ya existe (por correo) lo usa SIN modificarlo', async () => {
+  const { status, body, mock } = await call(post('/api/start', { ...PROFILE, email: 'existente@example.com', fullName: 'Otro Nombre' }));
+  assert.equal(status, 200);
+  assert.deepEqual(body, { contactId: 'exist12345', isNew: false });
+  assert.ok(!mock.calls.some((c) => c.path === '/contacts/upsert'), 'no se actualiza el contacto existente');
+});
+await test('start con un contacto que ya existe (por teléfono) lo usa SIN modificarlo', async () => {
+  const { body, mock } = await call(post('/api/start', { ...PROFILE, phone: '(305) 555-9999' }));
+  assert.equal(body.contactId, 'exist12345');
+  assert.ok(!mock.calls.some((c) => c.path === '/contacts/upsert'));
+});
 await test('start rechaza datos inválidos', async () => assert.equal((await call(post('/api/start', { ...PROFILE, email: 'x' }))).status, 400));
 await test('start rechaza el campo trampa de bots', async () => assert.equal((await call(post('/api/start', { ...PROFILE, hp: 'spam' }))).status, 400));
 await test('start con contactId verifica que exista y lo devuelve', async () => {
@@ -179,7 +197,7 @@ await test('un fallo del CRM llega como 502 sin filtrar el token ni el detalle',
   const { status, body } = await call(post('/api/start', PROFILE), { ...ENV, GHL_TOKEN: 'token-equivocado' });
   assert.equal(status, 502);
   assert.equal(body.error, 'crm_error');
-  assert.equal(body.step, 'upsertContact');
+  assert.equal(body.step, 'findContact'); // la búsqueda del contacto es la primera llamada al CRM
   assert.ok(!JSON.stringify(body).includes('token-equivocado'));
 });
 await test('sin token configurado responde 500 not_configured', async () => assert.equal((await call(post('/api/start', PROFILE), { GHL_LOCATION_ID: 'x' })).body.error, 'not_configured'));

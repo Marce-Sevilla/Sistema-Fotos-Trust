@@ -34,6 +34,11 @@ export function createMockGhl({ token = 'dev-token', locationId = 'dev-location'
       return reply({ message: 'injected failure' }, injected.status);
     }
 
+    if (method === 'GET' && url.pathname === '/contacts/search/duplicate') {
+      // Como el CRM real: 200 con el contacto si coincide el correo o el teléfono, y `contact: null` si no.
+      const known = record.query.email === 'existente@example.com' || record.query.number === '+13055559999';
+      return reply({ contact: known ? { id: 'exist12345', locationId, email: 'existente@example.com' } : null });
+    }
     if (method === 'POST' && url.pathname === '/contacts/upsert') {
       const { email } = record.json;
       return reply({ new: true, contact: { id: `mock${[...email].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7)}`, locationId, email } });
