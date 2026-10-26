@@ -5,21 +5,28 @@ import { cameraSupported, startCamera, stopCamera, captureFrame, pickPhotoFile }
 import { validatePhoto } from '../validation/index.js';
 import { loadVehicleModel } from '../validation/vehicle.js';
 import { loadOcr } from '../validation/ocr.js';
-import { ODOMETER_PATTERN, VIN_PATTERN, vinChecksumValid } from '../validation/ocr-rules.js';
 import { t, onLangChange } from '../i18n.js';
 import { isDebug } from '../debug.js';
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
+const VIN_LOCATIONS = ['windshield', 'door'];
+const CLOSE_UP_STEPS = new Set(['vin', 'odometro']); // fotos de cerca: se pueden tomar con el teléfono en horizontal
+
 export function createWizard(root) {
-  const photos = new Array(STEPS.length).fill(null); // { blob, width, height, url }
+  const photos = new Array(STEPS.length).fill(null); // { blob, width, height, url, status, ... }
   const profile = { fullName: '', email: '', phone: '', vehicle: '' };
   const announced = new Set(); // pasos cuya tarjeta "esta es la foto que sigue" ya se vio
-  const ocrFailures = {}; // intentos fallidos de lectura (OCR) por paso
+  const readFailures = {}; // intentos fallidos de lectura del VIN/odómetro, por paso
   const OCR_FAIL_REASONS = new Set(['validate.noVin', 'validate.noOdometer']);
-  const MAX_OCR_FAILURES = 2;
+  const MAX_READ_FAILURES = 2;
+  let vinLocation = ''; // 'windshield' | 'door': dónde se va a fotografiar el VIN
   let index = -1; // -1 = pantalla inicial (datos y tipo de vehículo)
   let stream = null;
+
+  // El texto de ayuda y la silueta del VIN dependen de la ubicación elegida.
+  const hintFor = (step) => (step.id === 'vin' && vinLocation ? t(`vin.${vinLocation}Hint`) : t(`steps.${step.id}.hint`));
+  const guideKindFor = (step) => (step.id === 'vin' && vinLocation === 'door' ? 'vin-door' : step.guide);
 
   function render() {
     stopCamera(stream);
@@ -30,9 +37,11 @@ export function createWizard(root) {
     const step = STEPS[index];
     const photo = photos[index];
     const title = t(`steps.${step.id}.title`);
+    const isVin = step.id === 'vin';
     if (index >= 3) loadOcr().catch(() => {}); // precarga el OCR antes de llegar al VIN y al odómetro
     // Antes de abrir la cámara, cada paso muestra al centro qué foto se va a tomar.
     const announcing = !photo && !announced.has(index);
+    const needsLocation = isVin && !vinLocation;
 
     root.innerHTML = `
       <header class="top">
@@ -40,31 +49,37 @@ export function createWizard(root) {
           ${STEPS.map((_, i) => `<span class="dot ${i < index ? 'done' : ''} ${i === index ? 'current' : ''}"></span>`).join('')}
         </div>
         <p class="counter">${t('wizard.counter', { current: index + 1, total: STEPS.length })}</p>
-        ${announcing ? '' : `<h1>${title}</h1><p class="hint">${t(`steps.${step.id}.hint`)}</p>`}
+        ${
+          announcing
+            ? ''
+            : `<h1>${title}</h1><p class="hint">${hintFor(step)}</p>
+               ${isVin && !photo ? `<button class="link" type="button" data-action="change-vin-location">${t(`vin.${vinLocation}`)} · ${t('vin.change')}</button>` : ''}`
+        }
       </header>
       <div class="viewer">
         ${
           announcing
             ? `<div class="announce">
                  <p class="announce-label">${t('wizard.nextPhoto')}</p>
-                 ${guideSvg(step.guide, profile.vehicle, 'announce-guide')}
+                 ${needsLocation ? '' : guideSvg(guideKindFor(step), profile.vehicle, 'announce-guide')}
                  <h1>${title}</h1>
-                 <p class="hint">${t(`steps.${step.id}.hint`)}</p>
-                 <button class="btn primary" data-action="open-camera">${t('wizard.openCamera')}</button>
+                 <p class="hint">${hintFor(step)}</p>
+                 ${isVin ? vinLocationPicker() : ''}
+                 ${CLOSE_UP_STEPS.has(step.id) ? `<p class="rotate-tip">↻ ${t('wizard.rotateTip')}</p>` : ''}
+                 <button class="btn primary" data-action="open-camera" ${needsLocation ? 'disabled' : ''}>${t('wizard.openCamera')}</button>
                </div>`
             : `${photo ? `<img class="photo" alt="${t('wizard.photoAlt', { title })}" src="${photo.url}" />` : '<video class="video" playsinline muted></video>'}
-               ${photo ? verdictHtml(photo) : guideSvg(step.guide, profile.vehicle)}
+               ${photo ? verdictHtml(photo) : guideSvg(guideKindFor(step), profile.vehicle)}
                <p class="status" role="status" hidden></p>`
         }
       </div>
-      ${photo ? confirmHtml(step, photo) : ''}
       <footer class="actions">
         ${
           photo
             ? photo.status === 'fail'
               ? `<button class="btn primary" data-action="retake">${t('wizard.retake')}</button>`
               : `<button class="btn secondary" data-action="retake">${t('wizard.retake')}</button>
-                 <button class="btn primary" data-action="next" ${photo.status === 'checking' || valueCheck(step, photo).blocking ? 'disabled' : ''}>${index === STEPS.length - 1 ? t('wizard.finish') : t('wizard.next')}</button>`
+                 <button class="btn primary" data-action="next" ${photo.status === 'checking' ? 'disabled' : ''}>${index === STEPS.length - 1 ? t('wizard.finish') : t('wizard.next')}</button>`
             : announcing
               ? `<button class="btn secondary" data-action="back">${t('wizard.back')}</button>`
               : `<button class="btn secondary" data-action="back">${t('wizard.back')}</button>
@@ -73,6 +88,21 @@ export function createWizard(root) {
       </footer>`;
 
     if (!photo && !announcing) initCamera();
+  }
+
+  // Selector de dónde se fotografiará el VIN: en el parabrisas (placa a la vista) o en la puerta (etiqueta del marco).
+  function vinLocationPicker() {
+    return `
+      <div class="vin-location" role="radiogroup" aria-label="${t('vin.locationTitle')}">
+        <p class="vin-location-title">${t('vin.locationTitle')}</p>
+        <div class="vin-location-options">
+          ${VIN_LOCATIONS.map(
+            (location) => `
+            <button type="button" class="chip ${vinLocation === location ? 'selected' : ''}" role="radio" aria-checked="${vinLocation === location}"
+              data-action="vin-location" data-value="${location}">${t(`vin.${location}`)}</button>`,
+          ).join('')}
+        </div>
+      </div>`;
   }
 
   // ---- Pantalla inicial -------------------------------------------------------
@@ -172,57 +202,15 @@ export function createWizard(root) {
 
     // Solo se puede continuar si la foto pasa la validación (o si no pudo validarse).
     const verdict = await validatePhoto(STEPS[at].id, result.blob);
-    // Si el OCR no logra leer el VIN/kilometraje tras dos intentos, se permite escribirlo a mano
-    // (la foto igual tuvo que pasar resolución, nitidez y exposición).
+    // El cliente solo pide una foto de buena calidad donde se lea el número. Si la foto ya pasó resolución,
+    // nitidez y exposición pero el OCR no logra leerla tras dos intentos, se acepta para no atascar a la
+    // persona (queda marcada como no verificada) y el equipo la revisa a simple vista.
     if (verdict.status === 'fail' && OCR_FAIL_REASONS.has(verdict.reason)) {
-      ocrFailures[at] = (ocrFailures[at] ?? 0) + 1;
-      if (ocrFailures[at] >= MAX_OCR_FAILURES) Object.assign(verdict, { status: 'unverified', reason: 'validate.manualEntry' });
+      readFailures[at] = (readFailures[at] ?? 0) + 1;
+      if (readFailures[at] >= MAX_READ_FAILURES) Object.assign(verdict, { status: 'unverified', reason: 'validate.readFailedAccepted' });
     }
-    Object.assign(photo, verdict);
+    Object.assign(photo, verdict, { vinLocation: STEPS[at].id === 'vin' ? vinLocation : undefined });
     if (photos[at] === photo && index === at) render();
-  }
-
-  // ---- Confirmación del VIN y del kilometraje leídos ---------------------------------
-  // El OCR puede equivocarse en un carácter, así que la persona confirma o corrige lo leído.
-  const READ_STEPS = new Set(['vin', 'odometro']);
-
-  // blocking: impide continuar; warning: solo avisa (p. ej. un VIN que no pasa el dígito verificador).
-  function valueCheck(step, photo) {
-    if (!READ_STEPS.has(step.id) || photo.status === 'fail' || photo.status === 'checking') return { blocking: null, warning: null };
-    const value = photo.value ?? '';
-    if (step.id === 'vin') {
-      if (!VIN_PATTERN.test(value)) return { blocking: 'confirm.vinInvalid', warning: null };
-      return { blocking: null, warning: vinChecksumValid(value) ? null : 'confirm.vinChecksum' };
-    }
-    return { blocking: ODOMETER_PATTERN.test(value) ? null : 'confirm.odometerInvalid', warning: null };
-  }
-
-  function confirmHtml(step, photo) {
-    if (!READ_STEPS.has(step.id) || photo.status === 'fail' || photo.status === 'checking') return '';
-    const isVin = step.id === 'vin';
-    const { blocking, warning } = valueCheck(step, photo);
-    const message = blocking ?? warning;
-    return `
-      <div class="confirm">
-        <label for="confirm-value">${t(isVin ? 'confirm.vin' : 'confirm.odometer')}</label>
-        <input id="confirm-value" data-confirm type="text" value="${escapeHtml(photo.value ?? '')}" autocomplete="off" autocorrect="off" spellcheck="false"
-          ${isVin ? 'maxlength="17" autocapitalize="characters"' : 'maxlength="7" inputmode="numeric"'} />
-        <p class="error confirm-message" role="alert" ${message ? '' : 'hidden'}>${message ? t(message) : ''}</p>
-      </div>`;
-  }
-
-  function onConfirmInput(input) {
-    const photo = photos[index];
-    const step = STEPS[index];
-    // Normaliza lo que se escribe: el VIN va en mayúsculas y el kilometraje solo lleva números.
-    photo.value = step.id === 'vin' ? input.value.toUpperCase().replace(/[^A-Z0-9]/g, '') : input.value.replace(/\D/g, '');
-    input.value = photo.value;
-    const { blocking, warning } = valueCheck(step, photo);
-    const message = blocking ?? warning;
-    const note = root.querySelector('.confirm-message');
-    note.textContent = message ? t(message) : '';
-    note.hidden = !message;
-    root.querySelector('[data-action="next"]').disabled = Boolean(blocking);
   }
 
   // En modo de diagnóstico se muestran las medidas de la foto, para calibrar los umbrales (ver debug.js).
@@ -235,9 +223,9 @@ export function createWizard(root) {
 
   function verdictHtml(photo) {
     if (photo.status === 'checking') return `<p class="verdict checking" role="status">${t('validate.checking')}</p>`;
-    if (photo.status === 'ok') return `<p class="verdict ok" role="status">✓ ${escapeHtml(t(photo.reason ?? 'validate.ok', photo.params))}${debugHtml(photo)}</p>`;
+    if (photo.status === 'ok') return `<p class="verdict ok" role="status">✓ ${t('validate.ok')}${debugHtml(photo)}</p>`;
     if (photo.status === 'fail') return `<p class="verdict fail" role="alert">${t(photo.reason)}${debugHtml(photo)}</p>`;
-    return photo.reason ? `<p class="verdict warn" role="status">${escapeHtml(t(photo.reason, photo.params))}${debugHtml(photo)}</p>` : '';
+    return photo.reason ? `<p class="verdict warn" role="status">${t(photo.reason)}${debugHtml(photo)}</p>` : '';
   }
 
   function retake() {
@@ -252,7 +240,6 @@ export function createWizard(root) {
         <h1>${t('summary.title')}</h1>
         <p class="hint">${t('summary.hint', { total: STEPS.length })}</p>
         <p class="contact">${escapeHtml(profile.fullName)} · ${escapeHtml(profile.email)} · ${escapeHtml(profile.phone)} · ${t(`vehicle.${profile.vehicle}`)}</p>
-        <p class="contact">VIN ${escapeHtml(photos[STEPS.findIndex((s) => s.id === 'vin')]?.value ?? '')} · ${escapeHtml(photos[STEPS.findIndex((s) => s.id === 'odometro')]?.value ?? '')}</p>
       </header>
       <ul class="grid">
         ${STEPS.map((s, i) => `<li><img alt="${t(`steps.${s.id}.title`)}" src="${photos[i].url}" /><span>${t(`steps.${s.id}.title`)}</span></li>`).join('')}
@@ -263,19 +250,22 @@ export function createWizard(root) {
       </footer>`;
   }
 
-  root.addEventListener('input', (event) => {
-    if (event.target.matches('[data-confirm]')) onConfirmInput(event.target);
-  });
-
   root.addEventListener('submit', (event) => {
     if (event.target.matches('form.intro')) submitIntro(event);
   });
 
   root.addEventListener('click', (event) => {
-    const action = event.target.closest('[data-action]')?.dataset.action;
+    const target = event.target.closest('[data-action]');
+    const action = target?.dataset.action;
     if (!action) return;
     if (action === 'open-camera') {
       announced.add(index);
+      render();
+    } else if (action === 'vin-location') {
+      vinLocation = target.dataset.value;
+      render();
+    } else if (action === 'change-vin-location') {
+      announced.delete(index); // vuelve a la tarjeta donde se elige la ubicación
       render();
     } else if (action === 'capture') capture();
     else if (action === 'retake') retake();

@@ -158,6 +158,17 @@ const VIN_TICKS = Array.from({ length: 16 }, (_, i) => {
 
 const VIN = `${`<rect ${MAIN} x="6" y="42" width="88" height="16" rx="2"/>`}${path(VIN_TICKS, FINE)}`;
 
+// VIN en la puerta: etiqueta del marco con código de barras, textos y, resaltada, la línea del VIN (17 casillas).
+const DOOR_TICKS = Array.from({ length: 16 }, (_, i) => `M${(22 + ((i + 1) * 56) / 17).toFixed(2)} 58 V66`).join(' ');
+
+const VIN_DOOR = [
+  `<rect ${MAIN} x="16" y="26" width="68" height="48" rx="3"/>`,
+  path('M22 32 V42 M25 32 V42 M27 32 V42 M31 32 V42 M33 32 V42 M37 32 V42 M39 32 V42 M43 32 V42', FINE),
+  path('M52 33 H78 M52 38 H72 M52 43 H76', FINE),
+  `<rect ${MAIN} x="22" y="55" width="56" height="14" rx="2"/>`,
+  path(DOOR_TICKS, FINE),
+].join('');
+
 const ODOMETER = [
   path('M8 38 Q8 30 16 30 H84 Q92 30 92 38 V62 Q92 70 84 70 H16 Q8 70 8 62 Z'),
   `<circle ${MAIN} cx="26" cy="50" r="13"/>`,
@@ -184,6 +195,8 @@ function shape(kind, vehicle) {
       return mirror(sideProfile(type));
     case 'vin':
       return VIN;
+    case 'vin-door':
+      return VIN_DOOR;
     case 'odometer':
       return ODOMETER;
     default:

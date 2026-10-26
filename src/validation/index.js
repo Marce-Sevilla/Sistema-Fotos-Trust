@@ -15,10 +15,10 @@ const VIEW_BY_STEP = {
 // Valida una foto en este orden (de lo más barato a lo más pesado):
 //   1. resolución mínima  2. nitidez y exposición  3. contenido (vehículo, VIN u odómetro)
 //
-// Resultado: { status, reason?, params?, value?, metrics? }
-//  - ok:         pasó todas las pruebas (`value` trae el VIN o kilometraje leído, si aplica)
+// Resultado: { status, reason?, value?, metrics? }
+//  - ok:         pasó todas las pruebas (`value` trae el VIN o kilometraje leído, solo como dato de apoyo)
 //  - fail:       hay un problema que el usuario debe corregir repitiendo la foto
-//  - unverified: no se pudo comprobar del todo (fallo del motor o lectura dudosa); no bloquea
+//  - unverified: no se pudo comprobar del todo (p. ej. fallo del motor); no bloquea
 //  - metrics:    medidas de nitidez y exposición, para el modo de diagnóstico (?debug=1)
 export async function validatePhoto(stepId, blob) {
   let bitmap;
@@ -50,16 +50,15 @@ export async function validatePhoto(stepId, blob) {
     if (stepId === 'vin') {
       const found = await readVin(bitmap);
       if (!found) return fail('validate.noVin');
-      // Sin dígito verificador válido es probable que el OCR haya errado un carácter: se avisa pero no se bloquea.
-      return found.checksumOk
-        ? result({ status: 'ok', reason: 'validate.vinRead', params: { value: found.vin }, value: found.vin })
-        : result({ status: 'unverified', reason: 'validate.vinCheck', params: { value: found.vin }, value: found.vin });
+      // La foto es válida porque el número se pudo leer. El texto leído (y si su dígito verificador cuadra)
+      // queda solo como dato de apoyo: no se muestra ni se le pide a la persona.
+      return result({ status: 'ok', value: found.vin, checksumOk: found.checksumOk });
     }
 
     if (stepId === 'odometro') {
       const found = await readOdometer(bitmap);
       if (!found) return fail('validate.noOdometer');
-      return result({ status: 'ok', reason: 'validate.odometerRead', params: { value: found.reading }, value: found.reading });
+      return result({ status: 'ok', value: found.reading });
     }
 
     return result({ status: 'unverified' });

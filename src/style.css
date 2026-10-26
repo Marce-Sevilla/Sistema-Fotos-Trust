@@ -1,4 +1,4 @@
-/* Paleta y tipografías tomadas de https://trustinsuranceservices.com/ */
+﻿/* Paleta y tipografías tomadas de https://trustinsuranceservices.com/ */
 :root {
   --navy: #001d3d;
   --navy-dark: #071a2d;
@@ -300,43 +300,6 @@ button {
   filter: drop-shadow(0 0 2px rgb(0 0 0 / 0.6));
 }
 
-/* Campo para confirmar o corregir el VIN / kilometraje leído */
-.confirm {
-  margin-top: 12px;
-}
-
-.confirm label {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--muted);
-}
-
-.confirm input {
-  width: 100%;
-  min-height: 50px;
-  padding: 0 16px;
-  border: 1.5px solid var(--line);
-  border-radius: 14px;
-  background: rgb(250 254 255 / 0.06);
-  color: var(--text);
-  font: inherit;
-  font-size: 1.1rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-}
-
-.confirm input:focus {
-  outline: none;
-  border-color: var(--orange);
-  box-shadow: 0 0 0 3px rgb(246 90 19 / 0.3);
-}
-
-.confirm .error {
-  margin-top: 6px;
-}
-
 /* Resultado de la validación sobre la foto tomada */
 .verdict {
   position: absolute;
@@ -507,4 +470,142 @@ button {
   object-fit: cover;
   border-radius: 14px;
   border: 1px solid var(--line);
+}
+
+/* Selector de ubicación del VIN (parabrisas / puerta) */
+.vin-location {
+  width: 100%;
+  margin-top: 6px;
+}
+
+.vin-location-title {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.vin-location-options {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.chip {
+  min-height: 44px;
+  padding: 0 22px;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  background: rgb(250 254 255 / 0.06);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chip.selected {
+  border-color: var(--orange);
+  background: rgb(246 90 19 / 0.2);
+}
+
+.link {
+  margin: 6px 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--orange-warm);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.rotate-tip {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--orange-warm);
+}
+
+/* Teléfono en horizontal: la cámara ocupa la derecha y las instrucciones y botones quedan a la izquierda. */
+@media (orientation: landscape) and (max-height: 520px) {
+  #app {
+    max-width: none;
+    padding-right: max(16px, env(safe-area-inset-right));
+    padding-left: max(16px, env(safe-area-inset-left));
+  }
+
+  .brand-bar {
+    padding: 6px 0;
+  }
+
+  .brand img {
+    height: 28px;
+  }
+
+  .lang-toggle {
+    min-height: 30px;
+  }
+
+  .wizard {
+    display: grid;
+    grid-template-columns: minmax(220px, 34%) 1fr;
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+      'top viewer'
+      'gap viewer'
+      'actions viewer';
+    column-gap: 16px;
+  }
+
+  .wizard > .top {
+    grid-area: top;
+    padding: 6px 0;
+  }
+
+  .wizard > .viewer,
+  .wizard > .grid {
+    grid-area: viewer;
+    margin: 8px 0;
+  }
+
+  .wizard > .actions {
+    grid-area: actions;
+    padding: 8px 0;
+  }
+
+  .wizard > form.intro {
+    grid-area: 1 / 1 / -1 / -1;
+  }
+
+  .top h1 {
+    font-size: 1.15rem;
+  }
+
+  .hint {
+    font-size: 0.8rem;
+  }
+
+  .btn {
+    min-height: 44px;
+  }
+
+  .btn.shutter {
+    width: 64px;
+    height: 64px;
+  }
+
+  .announce {
+    gap: 4px;
+    padding: 10px;
+  }
+
+  .announce h1 {
+    font-size: 1.2rem;
+  }
+
+  .announce-guide {
+    max-height: 35%;
+  }
 }
