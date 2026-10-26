@@ -705,3 +705,11 @@ button {
   text-align: center;
   line-height: 1.5;
 }
+
+/* Código técnico del error de envío (para diagnosticar con una captura) */
+.error-code {
+  margin: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}

@@ -129,6 +129,18 @@ await test('un error 4xx no se reintenta y trae el código del servidor', async 
   assert.equal(submission.state.finished, false);
 });
 
+await test('una respuesta 200 que NO es de la API (p. ej. la página del sitio) no cuenta como éxito', async () => {
+  // Simula que /api/* devuelve el HTML del sitio con 200: antes se mostraba un falso "¡Listo!".
+  const { submission } = setup({ intercept: () => ({ status: 200, data: {} }) });
+  await assert.rejects(() => submission.run(), (error) => error.stage === 'contact' && error.code === 'invalid_response');
+  assert.equal(submission.state.finished, false);
+});
+await test('si /api/finish responde 200 sin ok:true tampoco cuenta como éxito', async () => {
+  const { submission } = setup({ intercept: ({ path }) => (path === '/api/finish' ? { status: 200, data: { ok: false } } : null) });
+  await assert.rejects(() => submission.run(), (error) => error.stage === 'upload' && error.code === 'invalid_response');
+  assert.equal(submission.state.finished, false);
+});
+
 await test('una vez terminado, run() no vuelve a enviar nada', async () => {
   const { submission, sent } = setup();
   await submission.run();

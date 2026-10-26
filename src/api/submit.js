@@ -58,7 +58,9 @@ function defaultPost(path, body, onProgress) {
 export function createSubmission(payload, { post = defaultPost, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
   const state = { contactId: null, finished: false };
 
-  async function call(stage, path, body, onProgress) {
+  // `expect` comprueba que la respuesta sea la del servidor del CRM. Sin esto, cualquier 2xx (por ejemplo la
+  // página del sitio devuelta por error en lugar de la API) se daría por buena y se mostraría un falso "¡Listo!".
+  async function call(stage, path, body, onProgress, expect) {
     for (let attempt = 0; ; attempt++) {
       let response;
       try {
@@ -74,6 +76,7 @@ export function createSubmission(payload, { post = defaultPost, sleep = (ms) => 
         continue;
       }
       if (response.status < 200 || response.status >= 300) throw new SubmitError(stage, response.data?.error ?? `http_${response.status}`, response.status);
+      if (!expect(response.data)) throw new SubmitError(stage, 'invalid_response', response.status);
       return response.data;
     }
   }
@@ -84,7 +87,7 @@ export function createSubmission(payload, { post = defaultPost, sleep = (ms) => 
 
     if (!state.contactId) {
       onProgress({ phase: 'contact' });
-      const started = await call('contact', '/api/start', JSON.stringify({ ...profile, contactId: payload.contactId ?? undefined }));
+      const started = await call('contact', '/api/start', JSON.stringify({ ...profile, contactId: payload.contactId ?? undefined }), undefined, (data) => typeof data?.contactId === 'string' && data.contactId.length > 0);
       state.contactId = started.contactId;
     }
 
@@ -107,7 +110,7 @@ export function createSubmission(payload, { post = defaultPost, sleep = (ms) => 
     for (const step of STEPS) form.append(`photo_${step.id}`, byStep[step.id].blob, `${step.id}.jpg`);
 
     onProgress({ phase: 'upload', loaded: 0, total: 1 });
-    await call('upload', '/api/finish', form, (progress) => onProgress({ phase: 'upload', ...progress }));
+    await call('upload', '/api/finish', form, (progress) => onProgress({ phase: 'upload', ...progress }), (data) => data?.ok === true);
     state.finished = true;
     onProgress({ phase: 'done' });
     return state;

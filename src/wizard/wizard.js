@@ -322,6 +322,7 @@ export function createWizard(root) {
                  <p class="send-note" role="status">${phase}</p>`
               : ''
         }
+        ${status === 'error' && error?.stage ? `<p class="error-code">${escapeHtml(`${error.stage} · ${error.code}${error.status ? ` · HTTP ${error.status}` : ''}`)}</p>` : ''}
       </div>
       <footer class="actions">
         ${
