@@ -19,7 +19,8 @@ const MAX_JSON_BYTES = 8 * 1024;
 const MAX_PHOTO_REQUEST_BYTES = PHOTO_LIMITS.maxBytes + 64 * 1024;
 const DEFAULT_TAGS = ['fotos-vehiculo'];
 // Las URL que devuelve el CRM para los archivos subidos; no se aceptan enlaces de otros sitios en la nota.
-const ALLOWED_PHOTO_HOSTS = [/(^|\.)googleapis\.com$/, /(^|\.)leadconnectorhq\.com$/, /(^|\.)msgsndr\.com$/];
+// (filesafe.space es donde el CRM guarda hoy los archivos; las demás son sus dominios históricos.)
+const ALLOWED_PHOTO_HOSTS = [/(^|\.)filesafe\.space$/, /(^|\.)googleapis\.com$/, /(^|\.)leadconnectorhq\.com$/, /(^|\.)msgsndr\.com$/];
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
