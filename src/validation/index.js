@@ -15,7 +15,7 @@ const VIEW_BY_STEP = {
 // Valida una foto en este orden (de lo más barato a lo más pesado):
 //   1. resolución mínima  2. nitidez y exposición  3. contenido (vehículo, VIN u odómetro)
 //
-// Resultado: { status, reason?, value?, metrics? }
+// Resultado: { status, reason?, value?, color?, metrics? }  (color: Lab de la carrocería, en fotos exteriores)
 //  - ok:         pasó todas las pruebas (`value` trae el VIN o kilometraje leído, solo como dato de apoyo)
 //  - fail:       hay un problema que el usuario debe corregir repitiendo la foto
 //  - unverified: no se pudo comprobar del todo (p. ej. fallo del motor); no bloquea
@@ -42,9 +42,10 @@ export async function validatePhoto(stepId, blob) {
     if (quality) return fail(quality);
 
     if (VIEW_BY_STEP[stepId]) {
-      const { box, width, height } = await detectVehicle(bitmap);
+      const { box, color, width, height } = await detectVehicle(bitmap, VIEW_BY_STEP[stepId]);
       const reason = evaluateVehicleBox(VIEW_BY_STEP[stepId], box, width, height);
-      return reason ? fail(reason) : result({ status: 'ok' });
+      // `color` se devuelve para que el wizard compruebe que todas las fotos exteriores son del mismo vehículo.
+      return reason ? fail(reason) : result({ status: 'ok', color });
     }
 
     if (stepId === 'vin') {

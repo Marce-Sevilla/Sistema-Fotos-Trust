@@ -5,6 +5,7 @@ import { cameraSupported, startCamera, stopCamera, captureFrame, pickPhotoFile }
 import { validatePhoto } from '../validation/index.js';
 import { loadVehicleModel } from '../validation/vehicle.js';
 import { loadOcr } from '../validation/ocr.js';
+import { colorName, sameVehicleColor } from '../validation/color.js';
 import { t, onLangChange } from '../i18n.js';
 import { isDebug } from '../debug.js';
 
@@ -209,6 +210,12 @@ export function createWizard(root) {
       readFailures[at] = (readFailures[at] ?? 0) + 1;
       if (readFailures[at] >= MAX_READ_FAILURES) Object.assign(verdict, { status: 'unverified', reason: 'validate.readFailedAccepted' });
     }
+    // Las 4 fotos exteriores deben ser del mismo vehículo: se compara el color de la carrocería con el de
+    // otra foto exterior ya aceptada (con tolerancia a sombras y luz; solo se rechazan diferencias claras).
+    if (verdict.status === 'ok' && verdict.color) {
+      const reference = photos.find((p, i) => i !== at && p?.color && p.status !== 'fail');
+      if (reference && !sameVehicleColor(reference.color, verdict.color)) Object.assign(verdict, { status: 'fail', reason: 'validate.differentVehicle' });
+    }
     Object.assign(photo, verdict, { vinLocation: STEPS[at].id === 'vin' ? vinLocation : undefined });
     if (photos[at] === photo && index === at) render();
   }
@@ -218,7 +225,8 @@ export function createWizard(root) {
     const m = photo.metrics;
     if (!isDebug() || !m) return '';
     const n = (v, d = 1) => Number(v).toFixed(d);
-    return `<small class="debug">bordes ${n(m.edgeRatio, 2)} · nitidez ${n(m.sharpness, 0)} · luz ${n(m.mean, 0)} · oscuro ${n(m.darkFraction * 100, 0)}% · quemado ${n(m.brightFraction * 100, 0)}% · ${m.width}×${m.height}</small>`;
+    const color = photo.color ? ` · color ${colorName(photo.color)} (L${n(photo.color.L, 0)} a${n(photo.color.a, 0)} b${n(photo.color.b, 0)})` : '';
+    return `<small class="debug">bordes ${n(m.edgeRatio, 2)} · nitidez ${n(m.sharpness, 0)} · luz ${n(m.mean, 0)} · oscuro ${n(m.darkFraction * 100, 0)}% · quemado ${n(m.brightFraction * 100, 0)}% · ${m.width}×${m.height}${color}</small>`;
   }
 
   function verdictHtml(photo) {
