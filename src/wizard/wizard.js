@@ -29,6 +29,24 @@ export function createWizard(root) {
   let submission = null; // envío al CRM en curso (conserva lo ya subido para reintentar)
   let sendView = null; // { status: 'sending' | 'error' | 'done', progress, error } mientras se envía
 
+  // Teléfono en horizontal: las siluetas de VIN y odómetro se redibujan más anchas (ver guides.js).
+  const orientation = window.matchMedia?.('(orientation: landscape)');
+  const isLandscape = () => Boolean(orientation?.matches);
+
+  // Al girar el teléfono se actualiza la silueta sin tocar la cámara. Si todavía se está en la tarjeta
+  // "esta es la foto que sigue" (sin cámara abierta) se redibuja esa pantalla.
+  function refreshGuideForOrientation() {
+    if (sendView || index < 0 || index >= STEPS.length || photos[index]) return;
+    if (!announced.has(index)) return render();
+    const current = root.querySelector('.viewer > svg.guide');
+    if (!current) return;
+    const step = STEPS[index];
+    const holder = document.createElement('div');
+    holder.innerHTML = guideSvg(guideKindFor(step), profile.vehicle, 'guide', isLandscape());
+    current.replaceWith(holder.firstElementChild);
+  }
+  orientation?.addEventListener?.('change', refreshGuideForOrientation);
+
   // El texto de ayuda y la silueta del VIN dependen de la ubicación elegida.
   const hintFor = (step) => (step.id === 'vin' && vinLocation ? t(`vin.${vinLocation}Hint`) : t(`steps.${step.id}.hint`));
   const guideKindFor = (step) => (step.id === 'vin' && vinLocation === 'door' ? 'vin-door' : step.guide);
@@ -67,7 +85,7 @@ export function createWizard(root) {
           announcing
             ? `<div class="announce">
                  <p class="announce-label">${t('wizard.nextPhoto')}</p>
-                 ${needsLocation ? '' : guideSvg(guideKindFor(step), profile.vehicle, 'announce-guide')}
+                 ${needsLocation ? '' : guideSvg(guideKindFor(step), profile.vehicle, 'announce-guide', isLandscape())}
                  <h1>${title}</h1>
                  <p class="hint">${hintFor(step)}</p>
                  ${isVin ? vinLocationPicker() : ''}
@@ -75,7 +93,7 @@ export function createWizard(root) {
                  <button class="btn primary" data-action="open-camera" ${needsLocation ? 'disabled' : ''}>${t('wizard.openCamera')}</button>
                </div>`
             : `${photo ? `<img class="photo" alt="${t('wizard.photoAlt', { title })}" src="${photo.url}" />` : '<video class="video" playsinline muted></video>'}
-               ${photo ? verdictHtml(photo) : guideSvg(guideKindFor(step), profile.vehicle)}
+               ${photo ? verdictHtml(photo) : guideSvg(guideKindFor(step), profile.vehicle, 'guide', isLandscape())}
                <p class="status" role="status" hidden></p>`
         }
       </div>

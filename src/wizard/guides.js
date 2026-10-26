@@ -151,38 +151,74 @@ function faceView(type, rear) {
 }
 
 // ----------------------------------------------------------------- VIN y odómetro
-const VIN_TICKS = Array.from({ length: 16 }, (_, i) => {
-  const x = 6 + ((i + 1) * 88) / 17;
-  return `M${x.toFixed(2)} 44 V56`;
-}).join(' ');
+// Estas siluetas se redibujan según la orientación del teléfono: en vertical caben en un lienzo de 100x100 y en
+// horizontal (visor ancho) en uno de 160x100, con las piezas más grandes. Así no quedan chicas en medio del visor
+// cuando se gira el teléfono.
+const PORTRAIT_W = 100;
+const LANDSCAPE_W = 160;
+const CLOSE_UP_KINDS = new Set(['vin', 'vin-door', 'odometer']);
 
-const VIN = `${`<rect ${MAIN} x="6" y="42" width="88" height="16" rx="2"/>`}${path(VIN_TICKS, FINE)}`;
+// Las 17 casillas del VIN (16 divisiones) dentro de un recuadro.
+const cells = (x, y, w, h) => path(Array.from({ length: 16 }, (_, i) => `M${(x + ((i + 1) * w) / 17).toFixed(2)} ${y} V${y + h}`).join(' '), FINE);
+
+// VIN en el parabrisas: una placa larga con 17 casillas.
+function vinPlate(W) {
+  const wide = W > PORTRAIT_W;
+  const h = wide ? 26 : 16;
+  const x = wide ? 8 : 6;
+  const w = W - 2 * x;
+  const y = 50 - h / 2;
+  return `<rect ${MAIN} x="${x}" y="${y}" width="${w}" height="${h}" rx="2"/>${cells(x, y + 2, w, h - 4)}`;
+}
 
 // VIN en la puerta: etiqueta del marco con código de barras, textos y, resaltada, la línea del VIN (17 casillas).
-const DOOR_TICKS = Array.from({ length: 16 }, (_, i) => `M${(22 + ((i + 1) * 56) / 17).toFixed(2)} 58 V66`).join(' ');
+function vinDoorLabel(W) {
+  const wide = W > PORTRAIT_W;
+  const lw = wide ? 104 : 68;
+  const lh = wide ? 74 : 48;
+  const x = (W - lw) / 2;
+  const y = (100 - lh) / 2;
+  const pad = lw * 0.09;
+  const rowH = lh * 0.29;
+  const rowY = y + lh - pad - rowH;
+  const unit = lw * 0.028;
+  const bars = [0, 1.2, 2, 3.4, 4.2, 5.6, 6.4, 7.8].map((n) => `M${(x + pad + n * unit).toFixed(2)} ${(y + pad).toFixed(2)} V${(y + pad + lh * 0.2).toFixed(2)}`).join(' ');
+  const textLines = [0.92, 0.8, 0.88].map((end, i) => `M${(x + lw * 0.5).toFixed(2)} ${(y + pad + i * lh * 0.1).toFixed(2)} H${(x + lw * end).toFixed(2)}`).join(' ');
+  return [
+    `<rect ${MAIN} x="${x}" y="${y}" width="${lw}" height="${lh}" rx="3"/>`,
+    path(bars, FINE),
+    path(textLines, FINE),
+    `<rect ${MAIN} x="${x + pad}" y="${rowY}" width="${lw - 2 * pad}" height="${rowH}" rx="2"/>`,
+    cells(x + pad, rowY + 2, lw - 2 * pad, rowH - 4),
+  ].join('');
+}
 
-const VIN_DOOR = [
-  `<rect ${MAIN} x="16" y="26" width="68" height="48" rx="3"/>`,
-  path('M22 32 V42 M25 32 V42 M27 32 V42 M31 32 V42 M33 32 V42 M37 32 V42 M39 32 V42 M43 32 V42', FINE),
-  path('M52 33 H78 M52 38 H72 M52 43 H76', FINE),
-  `<rect ${MAIN} x="22" y="55" width="56" height="14" rx="2"/>`,
-  path(DOOR_TICKS, FINE),
-].join('');
-
-const ODOMETER = [
-  path('M8 38 Q8 30 16 30 H84 Q92 30 92 38 V62 Q92 70 84 70 H16 Q8 70 8 62 Z'),
-  `<circle ${MAIN} cx="26" cy="50" r="13"/>`,
-  `<circle ${MAIN} cx="74" cy="50" r="13"/>`,
-  `<rect ${MAIN} x="42" y="44" width="16" height="12" rx="2"/>`,
-  path('M45 50 H55', FINE),
-].join('');
+// Odómetro: tablero de instrumentos con dos diales y la pantalla central del kilometraje.
+function odometerCluster(W) {
+  const wide = W > PORTRAIT_W;
+  const top = wide ? 22 : 30;
+  const bottom = 100 - top;
+  const left = 8;
+  const right = W - 8;
+  const r = wide ? 22 : 13;
+  const dialX = wide ? 42 : 26;
+  const dw = wide ? 36 : 16;
+  const dh = wide ? 22 : 12;
+  return [
+    path(`M${left} ${top + 8} Q${left} ${top} ${left + 8} ${top} H${right - 8} Q${right} ${top} ${right} ${top + 8} V${bottom - 8} Q${right} ${bottom} ${right - 8} ${bottom} H${left + 8} Q${left} ${bottom} ${left} ${bottom - 8} Z`),
+    `<circle ${MAIN} cx="${dialX}" cy="50" r="${r}"/>`,
+    `<circle ${MAIN} cx="${W - dialX}" cy="50" r="${r}"/>`,
+    `<rect ${MAIN} x="${W / 2 - dw / 2}" y="${50 - dh / 2}" width="${dw}" height="${dh}" rx="2"/>`,
+    path(`M${W / 2 - dw * 0.3} 50 H${W / 2 + dw * 0.3}`, FINE),
+  ].join('');
+}
 
 // ------------------------------------------------------------------------ API
 // Las vistas frontal/trasera son más angostas que las laterales; se amplían para llenar el visor.
 // Escala 1.5: la carrocería (~52 de ancho) pasa a ocupar ~78 % del visor, centrada según su altura.
 const enlarge = (inner, type) => `<g transform="translate(50 50) scale(1.5) translate(-50 -${(FACE[type].roof + GROUND_Y) / 2})">${inner}</g>`;
 
-function shape(kind, vehicle) {
+function shape(kind, vehicle, W) {
   const type = VEHICLE_TYPES.includes(vehicle) ? vehicle : 'sedan';
   switch (kind) {
     case 'front':
@@ -194,18 +230,21 @@ function shape(kind, vehicle) {
     case 'side-right':
       return mirror(sideProfile(type));
     case 'vin':
-      return VIN;
+      return vinPlate(W);
     case 'vin-door':
-      return VIN_DOOR;
+      return vinDoorLabel(W);
     case 'odometer':
-      return ODOMETER;
+      return odometerCluster(W);
     default:
       return '';
   }
 }
 
-export function guideSvg(kind, vehicle = 'sedan', cls = 'guide') {
-  return `<svg class="${cls}" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${shape(kind, vehicle)}</svg>`;
+// `wide`: el visor es apaisado (teléfono en horizontal). Solo cambia las siluetas de cerca (VIN y odómetro);
+// los vehículos ya se ven bien centrados en cualquier orientación.
+export function guideSvg(kind, vehicle = 'sedan', cls = 'guide', wide = false) {
+  const W = wide && CLOSE_UP_KINDS.has(kind) ? LANDSCAPE_W : PORTRAIT_W;
+  return `<svg class="${cls}" viewBox="0 0 ${W} 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${shape(kind, vehicle, W)}</svg>`;
 }
 
 // Icono pequeño (perfil) para el selector de tipo de vehículo.
