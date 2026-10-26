@@ -30,13 +30,22 @@ const payload = (over = {}) => ({
 // Un "navegador" que habla con el Worker en memoria. `intercept` puede simular fallos de red o del servidor.
 function setup({ mock = createMockGhl(), intercept, ...over } = {}) {
   const sent = [];
-  const post = async (path, body, onProgress) => {
+  const post = async (fullPath, body, onProgress) => {
+    const path = fullPath.split('?')[0]; // el registro y los fallos simulados se identifican sin los parámetros
     sent.push(path);
     const hijack = intercept?.({ path, count: sent.filter((p) => p === path).length });
     if (hijack) return hijack;
     onProgress?.({ loaded: 50, total: 100 });
-    const init = { method: 'POST', body, ...(typeof body === 'string' ? { headers: { 'content-type': 'application/json' } } : {}) };
-    const response = await route(new Request(`https://fotos.example.com${path}`, init), ENV, mock.fetch);
+    let init;
+    if (body instanceof FormData) {
+      // Un navegador real serializa el cuerpo y envía su Content-Length: aquí se hace igual.
+      const probe = new Request('https://fotos.example.com/', { method: 'POST', body });
+      const bytes = new Uint8Array(await probe.arrayBuffer());
+      init = { method: 'POST', headers: { 'content-type': probe.headers.get('content-type'), 'content-length': String(bytes.length) }, body: bytes };
+    } else {
+      init = { method: 'POST', body, headers: { 'content-type': 'application/json' } };
+    }
+    const response = await route(new Request(`https://fotos.example.com${fullPath}`, init), ENV, mock.fetch);
     return { status: response.status, data: await response.json() };
   };
   return { sent, mock, submission: createSubmission(payload(over), { post, sleep: async () => {} }) };

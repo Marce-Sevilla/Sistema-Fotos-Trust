@@ -20,9 +20,9 @@ function loadVars() {
 }
 
 const vars = loadVars();
-// El ID del campo «Fotos» vive en wrangler.jsonc (no es secreto); .dev.vars puede sobrescribirlo.
-if (!vars.GHL_PHOTOS_FIELD_ID && existsSync('wrangler.jsonc')) {
-  vars.GHL_PHOTOS_FIELD_ID = readFileSync('wrangler.jsonc', 'utf8').match(/"GHL_PHOTOS_FIELD_ID"\s*:\s*"([^"]+)"/)?.[1];
+// El ID del campo «Fotos» vive en worker/api.js (no es secreto); .dev.vars puede sobrescribirlo.
+if (!vars.GHL_PHOTOS_FIELD_ID && existsSync('worker/api.js')) {
+  vars.GHL_PHOTOS_FIELD_ID = readFileSync('worker/api.js', 'utf8').match(/DEFAULT_PHOTOS_FIELD_ID\s*=\s*'([^']+)'/)?.[1];
 }
 if (!vars.GHL_TOKEN || !vars.GHL_LOCATION_ID) {
   console.error('Faltan GHL_TOKEN y/o GHL_LOCATION_ID. Créalos en el archivo .dev.vars (una línea por variable).');
@@ -76,7 +76,7 @@ if (contact) {
   let links = [];
   if (!fieldId) {
     failures += 1;
-    console.log('✗ Falta GHL_PHOTOS_FIELD_ID (el ID del campo «Fotos»; vive en wrangler.jsonc).');
+    console.log('✗ Falta GHL_PHOTOS_FIELD_ID (el ID del campo «Fotos»; vive en worker/api.js).');
   } else {
     // El CRM reemplaza los archivos del campo en cada subida, así que las 6 fotos van juntas en una sola llamada.
     const six = Array.from({ length: 6 }, (_, i) => ({ blob: new Blob([photoBytes], { type: 'image/jpeg' }), name: `verificacion-${i + 1}.jpg` }));

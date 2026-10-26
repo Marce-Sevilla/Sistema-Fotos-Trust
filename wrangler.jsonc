@@ -14,10 +14,10 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
-  // ID del campo personalizado «Fotos» (tipo archivo) del contacto en el CRM de Trust. No es secreto.
-  "vars": {
-    "GHL_PHOTOS_FIELD_ID": "btVvykNbwpKlMzvMK7MA"
-  }
-  // Secretos (se crean en Cloudflare, NO van en este archivo): GHL_TOKEN y GHL_LOCATION_ID.
-  // Opcionales: GHL_API_VERSION, GHL_TAGS. Ver README.
+  // Conserva las variables y secretos creados en el panel de Cloudflare: sin esto, cada despliegue deja las
+  // variables de texto iguales a este archivo y borra las demás (por eso este archivo NO define `vars`).
+  "keep_vars": true
+  // Se crean en el panel de Cloudflare como SECRET (no van en este archivo): GHL_TOKEN y GHL_LOCATION_ID.
+  // Opcionales: GHL_PHOTOS_FIELD_ID (por defecto el campo «Fotos» de Trust, ver worker/api.js), GHL_API_VERSION,
+  // GHL_ADD_NOTE, GHL_TAGS. Ver README.
 }

@@ -1,23 +1,29 @@
-// API del Worker: recibe los datos y las fotos del wizard y las entrega a BritoCRM (GoHighLevel).
+﻿// API del Worker: recibe los datos y las fotos del wizard y las entrega a BritoCRM (GoHighLevel).
 // El token del CRM vive solo aquí (secreto de Cloudflare); el navegador nunca lo ve.
 //
 //   POST /api/start   { fullName, email, phone, vehicle, contactId? }   -> { contactId, isNew }
 //   POST /api/finish  multipart: contactId, meta (JSON), photo_<paso> x6 -> { ok, warnings }
 //
 // Las 6 fotos se adjuntan al campo personalizado "Fotos" del contacto (visible en su ficha). El CRM
-// REEMPLAZA los archivos del campo en cada subida, así que las 6 van juntas en una sola llamada.
+// REEMPLAZA los archivos del campo en cada subida, así que las 6 van juntas en una sola llamada. El servidor NO abre\n// las fotos: reenvía el cuerpo multipart que arma el navegador, para gastar muy poca CPU (ver handleFinish).
 // Opcional (apagado por defecto): GHL_ADD_NOTE=true escribe una nota con los datos y GHL_TAGS pone etiquetas.
 import { STEPS } from '../src/wizard/steps.js';
 import { VEHICLE_TYPES } from '../src/wizard/guides.js';
 import { validateProfile } from '../src/wizard/profile.js';
+import { decodeMeta } from '../src/api/meta.js';
 import { createGhlClient, GhlError, normalizePhone, splitName } from './ghl.js';
 
 const STEP_IDS = STEPS.map((step) => step.id);
 const VIN_LOCATIONS = ['windshield', 'door'];
 const CONTACT_ID = /^[A-Za-z0-9]{8,40}$/;
-const PHOTO_LIMITS = { minBytes: 10_000, maxBytes: 10 * 1024 * 1024 };
 const MAX_JSON_BYTES = 8 * 1024;
-const MAX_FINISH_BYTES = 42 * 1024 * 1024; // 6 fotos de hasta 10 MB más los datos
+// Campo personalizado «Fotos» (tipo archivo) del contacto en el CRM de Trust. No es secreto. Vive aquí y no en
+// wrangler.jsonc a propósito: las variables de ese archivo hacen que cada despliegue reemplace las del panel
+// de Cloudflare y borre las que no estén (por ejemplo un GHL_TOKEN guardado como variable de texto).
+const DEFAULT_PHOTOS_FIELD_ID = 'btVvykNbwpKlMzvMK7MA';
+const photosFieldId = (env) => env.GHL_PHOTOS_FIELD_ID || DEFAULT_PHOTOS_FIELD_ID;
+const MAX_FINISH_BYTES = 42 * 1024 * 1024; // 6 fotos de hasta ~7 MB cada una
+const MIN_FINISH_BYTES = 60 * 1024; // 6 fotos de verdad pesan mucho más; menos que esto es una petición incompleta
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
@@ -76,11 +82,6 @@ const parseJson = (text) => {
   }
 };
 
-async function looksLikeJpeg(file) {
-  const bytes = new Uint8Array(await file.slice(0, 3).arrayBuffer());
-  return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-}
-
 function clientFor(env, fetchImpl) {
   return createGhlClient({ token: env.GHL_TOKEN, locationId: env.GHL_LOCATION_ID, version: env.GHL_API_VERSION || undefined, fetchImpl });
 }
@@ -99,6 +100,7 @@ async function verifyContact(client, env, contactId) {
 // ---- Endpoints ------------------------------------------------------------------------
 
 async function handleStart(request, env, fetchImpl) {
+  
   const body = parseJson(await request.text());
   if (!body) return fail('invalid_request', 'Solicitud no válida.');
   if (body.hp) return fail('invalid_request', 'Solicitud no válida.'); // campo trampa para bots
@@ -110,7 +112,7 @@ async function handleStart(request, env, fetchImpl) {
   if (body.contactId) {
     if (!CONTACT_ID.test(String(body.contactId))) return fail('invalid_contact', 'El enlace no es válido.');
     if (!(await verifyContact(client, env, body.contactId))) return fail('invalid_contact', 'El enlace no es válido.');
-    return json({ contactId: body.contactId, isNew: false });
+    return json({ contactId: body.contactId, isNew: false, photosFieldId: photosFieldId(env) });
   }
 
   const { firstName, lastName } = splitName(profile.fullName);
@@ -118,7 +120,7 @@ async function handleStart(request, env, fetchImpl) {
 
   // Si la persona ya es un contacto (por correo o teléfono), se usa tal cual: no se modifica ninguno de sus datos.
   const existing = await client.findContact({ email: contact.email, phone: contact.phone });
-  if (existing?.id) return json({ contactId: existing.id, isNew: false });
+  if (existing?.id) return json({ contactId: existing.id, isNew: false, photosFieldId: photosFieldId(env) });
 
   let result;
   try {
@@ -129,54 +131,58 @@ async function handleStart(request, env, fetchImpl) {
     else throw error;
   }
   if (!result.id) return fail('crm_error', 'El CRM no devolvió el contacto.', 502);
-  return json({ contactId: result.id, isNew: result.isNew });
+  return json({ contactId: result.id, isNew: result.isNew, photosFieldId: photosFieldId(env) });
+}
+
+// Cuerpo con longitud fija: algunos servidores rechazan las subidas "por trozos" (sin Content-Length). En
+// Cloudflare, FixedLengthStream permite reenviar el flujo conservando la longitud original.
+function lengthBoundBody(request, length) {
+  if (typeof FixedLengthStream === 'undefined') return request.body;
+  const { readable, writable } = new FixedLengthStream(length);
+  request.body.pipeTo(writable).catch(() => {});
+  return readable;
 }
 
 async function handleFinish(request, env, fetchImpl) {
-  if (!env.GHL_PHOTOS_FIELD_ID) return fail('not_configured', 'Falta configurar el campo «Fotos» del CRM.', 500);
-  if (Number(request.headers.get('content-length') ?? 0) > MAX_FINISH_BYTES) return fail('too_large', 'Las fotos son demasiado pesadas.', 413);
+  
+  const url = new URL(request.url);
+  const contactId = url.searchParams.get('contactId') ?? '';
+  if (!CONTACT_ID.test(contactId)) return fail('invalid_request', 'Solicitud no válida.');
 
-  let form;
-  try {
-    form = await request.formData();
-  } catch {
-    return fail('invalid_request', 'Solicitud no válida.');
-  }
-
-  const contactId = String(form.get('contactId') ?? '');
-  const meta = parseJson(form.get('meta'));
-  if (!CONTACT_ID.test(contactId) || !meta) return fail('invalid_request', 'Solicitud no válida.');
-
-  const profile = { fullName: String(meta.fullName ?? ''), email: String(meta.email ?? ''), phone: String(meta.phone ?? ''), vehicle: String(meta.vehicle ?? '') };
-  const vinLocation = String(meta.vinLocation ?? '');
-  if (!VEHICLE_TYPES.includes(profile.vehicle) || (vinLocation && !VIN_LOCATIONS.includes(vinLocation))) return fail('invalid_request', 'Solicitud no válida.');
-
-  // Las 6 fotos son obligatorias: deben ser JPEG y de tamaño razonable.
-  const files = [];
-  for (const step of STEP_IDS) {
-    const photo = form.get(`photo_${step}`);
-    if (!photo || typeof photo === 'string') return fail('invalid_request', 'Falta una foto.');
-    if (photo.size < PHOTO_LIMITS.minBytes || photo.size > PHOTO_LIMITS.maxBytes) return fail('invalid_photo', 'Una foto no tiene un tamaño válido.', 413);
-    if (!(await looksLikeJpeg(photo))) return fail('invalid_photo', 'Las fotos deben ser imágenes JPEG.', 415);
-    files.push({ step, blob: photo, name: photoFileName(step) });
-  }
+  // Las fotos NO se abren aquí: el navegador ya armó el cuerpo multipart con los archivos nombrados como pide
+  // el CRM, y se reenvía tal cual. Abrirlas (formData) y volver a armarlas gastaba ~10 ms de CPU, el límite
+  // entero del plan gratuito de Cloudflare, y a veces lo superaba (error 500).
+  const contentType = request.headers.get('content-type') ?? '';
+  const length = Number(request.headers.get('content-length') ?? 0);
+  if (!contentType.startsWith('multipart/form-data') || !request.body || !length) return fail('invalid_request', 'Solicitud no válida.');
+  if (length > MAX_FINISH_BYTES) return fail('too_large', 'Las fotos son demasiado pesadas.', 413);
+  if (length < MIN_FINISH_BYTES) return fail('invalid_photo', 'Faltan fotos.', 400);
 
   const client = clientFor(env, fetchImpl);
   if (!(await verifyContact(client, env, contactId))) return fail('invalid_contact', 'El contacto no existe.');
 
-  const uploaded = await client.uploadContactFiles(contactId, env.GHL_PHOTOS_FIELD_ID, files);
+  // Un solo intento: el flujo de la petición se consume una vez. Si falla, el navegador reintenta todo el envío
+  // (es seguro: el CRM reemplaza los archivos del campo, nunca los duplica).
+  const uploaded = await client.forwardContactFiles(contactId, photosFieldId(env), { body: lengthBoundBody(request, length), contentType, contentLength: length });
+
   const warnings = [];
-  const links = {};
-  for (const step of STEP_IDS) {
-    const match = uploaded.find((file) => file.name === photoFileName(step));
-    if (match?.url) links[step] = match.url;
-  }
   if (uploaded.length !== STEP_IDS.length) warnings.push('photo_count_mismatch'); // el CRM no confirmó las 6 en su respuesta
 
-  // Por defecto solo se suben las fotos. La nota y las etiquetas son opcionales (se activan con variables).
+  // Opcional (apagado por defecto): nota con los datos. Los datos de apoyo vienen en la dirección (ver src/api/meta.js).
   if (env.GHL_ADD_NOTE === 'true') {
-    const note = buildNote({ profile, vehicle: profile.vehicle, vinLocation, links, statuses: meta.statuses ?? {}, readings: meta.readings ?? {} });
-    await client.addNote(contactId, note);
+    const meta = decodeMeta(url.searchParams.get('meta'));
+    const vinLocation = String(meta?.vinLocation ?? '');
+    if (!meta || !VEHICLE_TYPES.includes(String(meta.vehicle)) || (vinLocation && !VIN_LOCATIONS.includes(vinLocation))) {
+      warnings.push('note_skipped');
+    } else {
+      const links = {};
+      for (const step of STEP_IDS) {
+        const match = uploaded.find((file) => file.name === photoFileName(step));
+        if (match?.url) links[step] = match.url;
+      }
+      const profile = { fullName: String(meta.fullName ?? ''), email: String(meta.email ?? ''), phone: String(meta.phone ?? '') };
+      await client.addNote(contactId, buildNote({ profile, vehicle: String(meta.vehicle), vinLocation, links, statuses: meta.statuses ?? {}, readings: meta.readings ?? {} }));
+    }
   }
 
   // Las etiquetas permiten que el CRM dispare automatizaciones; si fallan, las fotos ya quedaron guardadas.
@@ -205,7 +211,11 @@ export async function route(request, env, fetchImpl = fetch) {
   const origin = request.headers.get('origin');
   if (origin && new URL(origin).host !== url.host) return fail('forbidden', 'Origen no permitido.', 403);
 
-  if (!env.GHL_TOKEN || !env.GHL_LOCATION_ID) return fail('not_configured', 'La conexión con el CRM no está configurada.', 500);
+  const missing = ['GHL_TOKEN', 'GHL_LOCATION_ID'].filter((name) => !env[name]);
+  if (missing.length) {
+    console.error('[config] faltan variables del Worker:', missing.join(', '));
+    return json({ error: 'not_configured', message: 'La conexión con el CRM no está configurada.', missing }, 500);
+  }
 
   try {
     return await handler(request, env, fetchImpl);

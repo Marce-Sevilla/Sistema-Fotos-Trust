@@ -17,11 +17,18 @@ export function createMockGhl({ token = 'dev-token', locationId = 'dev-location'
     const method = init.method ?? 'GET';
     const headers = new Headers(init.headers);
     const record = { method, path: url.pathname, query: Object.fromEntries(url.searchParams), headers: Object.fromEntries(headers) };
-    if (init.body instanceof FormData) {
+    // El cuerpo puede llegar como flujo (el Worker lo reenvía sin abrirlo): se lee aquí, como lo haría el CRM.
+    let body = init.body;
+    if (body && typeof body.getReader === 'function') {
+      record.streamed = true;
+      record.contentLength = headers.get('content-length');
+      body = await new Response(body, { headers: { 'content-type': headers.get('content-type') ?? '' } }).formData();
+    }
+    if (body instanceof FormData) {
       record.form = [];
-      for (const [key, value] of init.body.entries()) record.form.push({ key, ...(typeof value === 'string' ? { value } : { filename: value.name, size: value.size, type: value.type }) });
-    } else if (typeof init.body === 'string' && init.body) {
-      record.json = JSON.parse(init.body);
+      for (const [key, value] of body.entries()) record.form.push({ key, ...(typeof value === 'string' ? { value } : { filename: value.name, size: value.size, type: value.type }) });
+    } else if (typeof body === 'string' && body) {
+      record.json = JSON.parse(body);
     }
     calls.push(record);
 
@@ -61,7 +68,7 @@ export function createMockGhl({ token = 'dev-token', locationId = 'dev-location'
       // devuelve el valor del campo: { uuid: { meta: { originalname }, url } }.
       const files = {};
       let fieldId;
-      for (const [key, value] of init.body.entries()) {
+      for (const [key, value] of body.entries()) {
         const [id, uuid] = key.split('_');
         fieldId = id;
         files[uuid] = { meta: { fieldname: id, originalname: value.name, mimetype: value.type, size: value.size, uuid }, url: `https://services.leadconnectorhq.com/contacts/file/download?id=mock-${uuid}` };

@@ -5,6 +5,7 @@
 //   2. /api/finish  -> las 6 fotos JUNTAS + datos. El CRM reemplaza (no suma) los archivos del campo "Fotos",
 //                      así que repetir esta etapa es seguro: nunca deja fotos duplicadas.
 import { STEPS } from '../wizard/steps.js';
+import { encodeMeta } from './meta.js';
 
 export class SubmitError extends Error {
   // stage: 'contact' | 'upload'.  code: 'network' o el código que devuelve el servidor.
@@ -56,7 +57,7 @@ function defaultPost(path, body, onProgress) {
 }
 
 export function createSubmission(payload, { post = defaultPost, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
-  const state = { contactId: null, finished: false };
+  const state = { contactId: null, photosFieldId: null, finished: false };
 
   // `expect` comprueba que la respuesta sea la del servidor del CRM. Sin esto, cualquier 2xx (por ejemplo la
   // página del sitio devuelta por error en lugar de la API) se daría por buena y se mostraría un falso "¡Listo!".
@@ -87,30 +88,29 @@ export function createSubmission(payload, { post = defaultPost, sleep = (ms) => 
 
     if (!state.contactId) {
       onProgress({ phase: 'contact' });
-      const started = await call('contact', '/api/start', JSON.stringify({ ...profile, contactId: payload.contactId ?? undefined }), undefined, (data) => typeof data?.contactId === 'string' && data.contactId.length > 0);
+      const started = await call('contact', '/api/start', JSON.stringify({ ...profile, contactId: payload.contactId ?? undefined }), undefined, (data) => typeof data?.contactId === 'string' && data.contactId.length > 0 && typeof data?.photosFieldId === 'string' && data.photosFieldId.length > 0);
       state.contactId = started.contactId;
+      state.photosFieldId = started.photosFieldId;
     }
 
     const byStep = Object.fromEntries(payload.photos.map((photo) => [photo.step, photo]));
+    // El cuerpo lleva SOLO las 6 fotos, con el nombre `idDelCampo_uuid` que exige el CRM: el servidor las
+    // reenvía sin abrirlas (así gasta muy poca CPU). Los datos de apoyo van en la dirección.
     const form = new FormData();
-    form.append('contactId', state.contactId);
-    form.append(
-      'meta',
-      JSON.stringify({
-        ...profile,
-        vinLocation: vinLocation || undefined,
-        lang,
-        statuses: Object.fromEntries(payload.photos.map((photo) => [photo.step, photo.status])),
-        readings: {
-          vin: byStep.vin?.value ? { value: byStep.vin.value, checksumOk: byStep.vin.checksumOk } : undefined,
-          odometer: byStep.odometro?.value ? { value: byStep.odometro.value } : undefined,
-        },
-      }),
-    );
-    for (const step of STEPS) form.append(`photo_${step.id}`, byStep[step.id].blob, `${step.id}.jpg`);
+    for (const step of STEPS) form.append(`${state.photosFieldId}_${crypto.randomUUID()}`, byStep[step.id].blob, `${step.id}.jpg`);
+    const meta = encodeMeta({
+      ...profile,
+      vinLocation: vinLocation || undefined,
+      lang,
+      statuses: Object.fromEntries(payload.photos.map((photo) => [photo.step, photo.status])),
+      readings: {
+        vin: byStep.vin?.value ? { value: byStep.vin.value, checksumOk: byStep.vin.checksumOk } : undefined,
+        odometer: byStep.odometro?.value ? { value: byStep.odometro.value } : undefined,
+      },
+    });
 
     onProgress({ phase: 'upload', loaded: 0, total: 1 });
-    await call('upload', '/api/finish', form, (progress) => onProgress({ phase: 'upload', ...progress }), (data) => data?.ok === true);
+    await call('upload', `/api/finish?contactId=${encodeURIComponent(state.contactId)}&meta=${meta}`, form, (progress) => onProgress({ phase: 'upload', ...progress }), (data) => data?.ok === true);
     state.finished = true;
     onProgress({ phase: 'done' });
     return state;

@@ -52,7 +52,7 @@ Así las fotos quedan en ese contacto sin crear uno nuevo. Sin el parámetro, se
    npm run check:ghl
    ```
    Crea un contacto de prueba, sube 6 fotos al campo «Fotos», comprueba que la ficha las muestra, y borra el contacto. Cada paso dice si funcionó y, si no, la causa probable.
-4. **Producción.** En Cloudflare → *Workers & Pages → sistema-de-fotos-tru → Settings → Variables and Secrets*, crea como **Secret**: `GHL_TOKEN` y `GHL_LOCATION_ID`. Los secretos se conservan en cada despliegue. El ID del campo «Fotos» (`GHL_PHOTOS_FIELD_ID`) ya está en `wrangler.jsonc`. Opcionales: `GHL_API_VERSION`, `GHL_ADD_NOTE`, `GHL_TAGS`.
+4. **Producción.** En Cloudflare → *Workers & Pages → sistema-de-fotos-tru → Settings → Variables and Secrets*, crea como **Secret**: `GHL_TOKEN` y `GHL_LOCATION_ID`. Los secretos se conservan en cada despliegue. El ID del campo «Fotos» ya viene en el código (`worker/api.js`). Opcionales: `GHL_PHOTOS_FIELD_ID`, `GHL_API_VERSION`, `GHL_ADD_NOTE`, `GHL_TAGS`.
 5. Despliega (cada `push` a `main` lo hace) y haz una prueba real con tu teléfono.
 
 ### Probar el sitio y el servidor juntos con el CRM real
@@ -62,6 +62,12 @@ npm run cf:dev   # construye el sitio y levanta el Worker local con los valores 
 
 ### El campo «Fotos»
 Es un campo personalizado del contacto (tipo archivo, hasta 6 archivos) que ya existe en el CRM de Trust. **Importante:** el CRM reemplaza los archivos del campo en cada subida en lugar de sumarlos; por eso las 6 fotos se envían juntas en una sola llamada, y repetir un envío nunca deja fotos duplicadas (si la misma persona vuelve a enviar, las fotos nuevas reemplazan a las anteriores; los enlaces de la nota anterior se conservan).
+
+### Las variables de Cloudflare y los despliegues
+**Créalas como _Secret_**, no como _Text_. `wrangler.jsonc` no define `vars` y tiene `keep_vars: true` para que un despliegue nunca borre lo creado en el panel; aun así, un Secret es lo correcto para un token. Si el sitio responde «La conexión con el CRM no está configurada» (error 500), el error en pantalla y en *Observability → Logs* dice qué variable falta (solo el nombre).
+
+### CPU del Worker (plan gratuito)
+El plan gratuito de Cloudflare permite ~10 ms de CPU por petición. Abrir las 6 fotos en el servidor y volver a armarlas gastaba justo eso y podía superarlo (error 500). Por eso el navegador arma el cuerpo con los archivos ya nombrados como exige el CRM y el Worker lo **reenvía sin abrirlo** (`handleFinish` en `worker/api.js`). A cambio, las validaciones de cada foto (JPEG, tamaño, calidad) viven solo en el navegador.
 
 ### Seguridad
 - El token **nunca** llega al navegador: solo vive en el Worker.

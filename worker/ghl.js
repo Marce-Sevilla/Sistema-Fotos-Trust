@@ -39,7 +39,9 @@ export function createGhlClient({
   version = '2021-07-28',
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 }) {
-  async function request(step, path, { method = 'GET', json, form, query } = {}) {
+  // `raw`: { body, contentType, contentLength } reenvía un cuerpo ya armado (p. ej. el flujo de una petición)
+  // sin leerlo ni copiarlo. Un flujo se consume una sola vez, así que en ese caso no hay reintentos.
+  async function request(step, path, { method = 'GET', json, form, raw, query } = {}) {
     const url = new URL(baseUrl + path);
     for (const [key, value] of Object.entries(query ?? {})) url.searchParams.set(key, value);
     const headers = { Authorization: `Bearer ${token}`, Version: version, Accept: 'application/json' };
@@ -49,18 +51,23 @@ export function createGhlClient({
       body = JSON.stringify(json);
     } else if (form) {
       body = form; // el Content-Type multipart (con su boundary) lo pone fetch
+    } else if (raw) {
+      headers['Content-Type'] = raw.contentType;
+      if (raw.contentLength) headers['Content-Length'] = String(raw.contentLength);
+      body = raw.body;
     }
+    const retries = raw ? 0 : RETRY_DELAYS_MS.length;
 
     let response;
     for (let attempt = 0; ; attempt++) {
       try {
-        response = await fetchImpl(url, { method, headers, body });
+        response = await fetchImpl(url, { method, headers, body, ...(raw ? { duplex: 'half' } : {}) });
       } catch (error) {
-        if (attempt >= RETRY_DELAYS_MS.length) throw new GhlError(step, 0, String(error?.message ?? error));
+        if (attempt >= retries) throw new GhlError(step, 0, String(error?.message ?? error));
         await sleep(RETRY_DELAYS_MS[attempt]);
         continue;
       }
-      if (RETRY_STATUS.has(response.status) && attempt < RETRY_DELAYS_MS.length) {
+      if (RETRY_STATUS.has(response.status) && attempt < retries) {
         await sleep(RETRY_DELAYS_MS[attempt]);
         continue;
       }
@@ -111,6 +118,15 @@ export function createGhlClient({
       const form = new FormData();
       for (const { blob, name } of files) form.append(`${fieldId}_${crypto.randomUUID()}`, blob, name);
       const data = await request('uploadFiles', '/forms/upload-custom-files', { method: 'POST', form, query: { contactId, locationId } });
+      const field = (data.contact?.customFields ?? []).find((entry) => entry.id === fieldId);
+      return Object.values(field?.value ?? {}).map((file) => ({ name: file.meta?.originalname, url: file.url }));
+    },
+
+    // Igual que uploadContactFiles, pero reenvía el cuerpo multipart que el navegador ya armó (con los
+    // archivos nombrados `idDelCampo_uuid`) SIN leerlo ni copiarlo: el Worker casi no gasta CPU, que en el plan
+    // gratuito de Cloudflare es de solo 10 ms por petición. Devuelve [{ name, url }] como uploadContactFiles.
+    async forwardContactFiles(contactId, fieldId, { body, contentType, contentLength }) {
+      const data = await request('uploadFiles', '/forms/upload-custom-files', { method: 'POST', raw: { body, contentType, contentLength }, query: { contactId, locationId } });
       const field = (data.contact?.customFields ?? []).find((entry) => entry.id === fieldId);
       return Object.values(field?.value ?? {}).map((file) => ({ name: file.meta?.originalname, url: file.url }));
     },
