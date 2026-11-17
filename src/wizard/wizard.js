@@ -4,7 +4,6 @@ import { validateProfile } from './profile.js';
 import { cameraSupported, startCamera, stopCamera, captureFrame, pickPhotoFile } from './camera.js';
 import { validatePhoto } from '../validation/index.js';
 import { loadVehicleModel } from '../validation/vehicle.js';
-import { loadOcr } from '../validation/ocr.js';
 import { colorName, sameVehicleColor } from '../validation/color.js';
 import { createSubmission, contactIdFromUrl } from '../api/submit.js';
 import { t, getLang, onLangChange } from '../i18n.js';
@@ -19,9 +18,6 @@ export function createWizard(root) {
   const photos = new Array(STEPS.length).fill(null); // { blob, width, height, url, status, ... }
   const profile = { fullName: '', email: '', phone: '', vehicle: '' };
   const announced = new Set(); // pasos cuya tarjeta "esta es la foto que sigue" ya se vio
-  const readFailures = {}; // intentos fallidos de lectura del VIN/odómetro, por paso
-  const OCR_FAIL_REASONS = new Set(['validate.noVin', 'validate.noOdometer']);
-  const MAX_READ_FAILURES = 2;
   let vinLocation = ''; // 'windshield' | 'door': dónde se va a fotografiar el VIN
   let index = -1; // -1 = pantalla inicial (datos y tipo de vehículo)
   let stream = null;
@@ -69,7 +65,6 @@ export function createWizard(root) {
     const photo = photos[index];
     const title = t(`steps.${step.id}.title`);
     const isVin = step.id === 'vin';
-    if (index >= 4) loadOcr().catch(() => {}); // precarga el OCR antes de llegar al odómetro
     // Antes de abrir la cámara, cada paso muestra al centro qué foto se va a tomar.
     const announcing = !photo && !announced.has(index);
     const needsLocation = isVin && !vinLocation;
@@ -273,13 +268,6 @@ export function createWizard(root) {
 
     // Solo se puede continuar si la foto pasa la validación (o si no pudo validarse).
     const verdict = await validatePhoto(STEPS[at].id, result.blob);
-    // El cliente solo pide una foto de buena calidad donde se lea el número. Si la foto ya pasó resolución,
-    // nitidez y exposición pero el OCR no logra leerla tras dos intentos, se acepta para no atascar a la
-    // persona (queda marcada como no verificada) y el equipo la revisa a simple vista.
-    if (verdict.status === 'fail' && OCR_FAIL_REASONS.has(verdict.reason)) {
-      readFailures[at] = (readFailures[at] ?? 0) + 1;
-      if (readFailures[at] >= MAX_READ_FAILURES) Object.assign(verdict, { status: 'unverified', reason: 'validate.readFailedAccepted' });
-    }
     // Las 4 fotos exteriores deben ser del mismo vehículo: se compara el color de la carrocería con el de
     // otra foto exterior ya aceptada (con tolerancia a sombras y luz; solo se rechazan diferencias claras).
     if (verdict.status === 'ok' && verdict.color) {

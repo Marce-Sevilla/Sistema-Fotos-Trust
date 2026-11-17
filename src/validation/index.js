@@ -1,7 +1,6 @@
 import { decodeImage } from './image.js';
 import { measureQuality } from './quality.js';
 import { detectVehicle } from './vehicle.js';
-import { readOdometer } from './ocr.js';
 import { evaluateQuality, evaluateResolution, evaluateVehicleBox } from './rules.js';
 
 // Qué tipo de vista exige cada paso de vehículo exterior.
@@ -13,10 +12,10 @@ const VIEW_BY_STEP = {
 };
 
 // Valida una foto en este orden (de lo más barato a lo más pesado):
-//   1. resolución mínima  2. nitidez y exposición  3. contenido (vehículo u odómetro; el VIN no se lee)
+//   1. resolución mínima  2. nitidez y exposición  3. contenido (solo el vehículo exterior; el VIN y el odómetro no se leen)
 //
 // Resultado: { status, reason?, value?, color?, metrics? }  (color: Lab de la carrocería, en fotos exteriores)
-//  - ok:         pasó todas las pruebas (`value` trae el kilometraje leído, solo como dato de apoyo)
+//  - ok:         pasó todas las pruebas
 //  - fail:       hay un problema que el usuario debe corregir repitiendo la foto
 //  - unverified: no se pudo comprobar del todo (p. ej. fallo del motor); no bloquea
 //  - metrics:    medidas de nitidez y exposición, para el modo de diagnóstico (?debug=1)
@@ -48,15 +47,9 @@ export async function validatePhoto(stepId, blob) {
       return reason ? fail(reason) : result({ status: 'ok', color });
     }
 
-    // VIN: ya no se lee con OCR (en las pruebas fallaba con fotos nítidas y frustraba a la persona). Basta con que la
-    // foto pase la resolución, la nitidez y la exposición de arriba; el VIN lo revisa a simple vista quien emite la póliza.
-    if (stepId === 'vin') return result({ status: 'ok' });
-
-    if (stepId === 'odometro') {
-      const found = await readOdometer(bitmap);
-      if (!found) return fail('validate.noOdometer');
-      return result({ status: 'ok', value: found.reading });
-    }
+    // VIN y odómetro: ya no se leen con OCR (en las pruebas fallaba con fotos nítidas y frustraba a la persona). Basta con
+    // que la foto pase la resolución, la nitidez y la exposición de arriba; quien emite la póliza revisa el número a simple vista.
+    if (stepId === 'vin' || stepId === 'odometro') return result({ status: 'ok' });
 
     return result({ status: 'unverified' });
   } catch (error) {

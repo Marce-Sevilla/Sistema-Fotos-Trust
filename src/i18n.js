@@ -49,9 +49,6 @@ const MESSAGES = {
     'validate.blurry': 'La foto está borrosa. Mantén el teléfono quieto, enfoca bien y vuelve a intentarlo.',
     'validate.tooDark': 'La foto está muy oscura. Busca más luz y vuelve a intentarlo.',
     'validate.tooBright': 'La foto tiene demasiada luz. Evita el sol directo y los reflejos, y vuelve a intentarlo.',
-    'validate.noVin': 'No pudimos leer el VIN. Acércate, enfoca los 17 caracteres y evita los reflejos.',
-    'validate.noOdometer': 'No pudimos leer el kilometraje. Acércate al tablero, enciende el vehículo y evita los reflejos.',
-    'validate.readFailedAccepted': 'No pudimos leer el número automáticamente, pero la foto tiene buena calidad. Si se lee bien a simple vista, continúa.',
     'wizard.rotateTip': 'Para esta foto puedes girar el teléfono en horizontal: es más cómodo.',
     'vin.pickHint': 'Elige dónde está el VIN de tu vehículo.',
     'vin.locationTitle': '¿Dónde vas a tomar el VIN?',
@@ -95,7 +92,7 @@ const MESSAGES = {
     'steps.vin.title': 'Número VIN',
     'steps.vin.hint': 'Elige dónde está el VIN de tu vehículo. Luego acércate hasta que los 17 caracteres se vean grandes, nítidos y sin reflejos.',
     'steps.odometro.title': 'Odómetro',
-    'steps.odometro.hint': 'Con el vehículo encendido, acércate al kilometraje hasta que los dígitos se vean grandes y nítidos.',
+    'steps.odometro.hint': 'Con el vehículo encendido, acerca tu teléfono lo mayor posible al kilometraje del tablero hasta que los dígitos se vean grandes y nítidos.',
   },
   en: {
     'app.title': 'Vehicle photos | Trust Insurance Services',
@@ -143,9 +140,6 @@ const MESSAGES = {
     'validate.blurry': 'The photo is blurry. Hold the phone steady, focus, and try again.',
     'validate.tooDark': 'The photo is too dark. Find more light and try again.',
     'validate.tooBright': 'The photo has too much light. Avoid direct sun and glare, and try again.',
-    'validate.noVin': "We couldn't read the VIN. Get closer, focus on all 17 characters and avoid glare.",
-    'validate.noOdometer': "We couldn't read the mileage. Get closer to the dashboard, turn the vehicle on and avoid glare.",
-    'validate.readFailedAccepted': "We couldn't read the number automatically, but the photo quality is good. If it's readable by eye, continue.",
     'wizard.rotateTip': 'For this photo you can turn your phone sideways: it is more comfortable.',
     'vin.pickHint': 'Choose where the VIN is on your vehicle.',
     'vin.locationTitle': 'Where will you photograph the VIN?',
@@ -189,7 +183,7 @@ const MESSAGES = {
     'steps.vin.title': 'VIN number',
     'steps.vin.hint': "Choose where your vehicle's VIN is. Then get close until all 17 characters look large, sharp and free of glare.",
     'steps.odometro.title': 'Odometer',
-    'steps.odometro.hint': 'With the vehicle on, get close to the mileage until the digits look large and sharp.',
+    'steps.odometro.hint': 'With the vehicle on, bring your phone as close as you can to the mileage on the dashboard until the digits look large and sharp.',
   },
 };
 
