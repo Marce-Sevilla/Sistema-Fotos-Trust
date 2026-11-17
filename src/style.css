@@ -272,6 +272,27 @@ button {
   overflow-wrap: anywhere;
 }
 
+/* Botón amarillo para cambiar la ubicación del VIN (parabrisas <-> puerta) con la cámara abierta */
+.vin-switch {
+  align-self: flex-start;
+  min-height: 40px;
+  margin-top: 8px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--orange-warm);
+  color: var(--navy-dark);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.vin-switch:focus-visible {
+  outline: 3px solid rgb(249 166 43 / 0.5);
+  outline-offset: 2px;
+}
+
 /* Visor de cámara y foto */
 .viewer {
   position: relative;
@@ -535,6 +556,11 @@ button {
 
 /* Teléfono en horizontal: la cámara ocupa la derecha y las instrucciones y botones quedan a la izquierda. */
 @media (orientation: landscape) and (max-height: 520px) {
+  /* Ya está en horizontal: el aviso de «gira el teléfono» sobra. */
+  .rotate-tip {
+    display: none;
+  }
+
   #app {
     max-width: none;
     padding-right: max(16px, env(safe-area-inset-right));

@@ -47,9 +47,10 @@ export function createWizard(root) {
   }
   orientation?.addEventListener?.('change', refreshGuideForOrientation);
 
-  // El texto de ayuda y la silueta del VIN dependen de la ubicación elegida.
+  // El texto de ayuda del VIN depende de la ubicación elegida.
   const hintFor = (step) => (step.id === 'vin' && vinLocation ? t(`vin.${vinLocation}Hint`) : t(`steps.${step.id}.hint`));
-  const guideKindFor = (step) => (step.id === 'vin' && vinLocation === 'door' ? 'vin-door' : step.guide);
+  // Parabrisas y puerta usan la misma silueta del VIN (la de la placa). La de etiqueta de puerta ('vin-door' en guides.js) quedó sin uso a propósito.
+  const guideKindFor = (step) => step.guide;
 
   function render() {
     stopCamera(stream);
@@ -77,7 +78,7 @@ export function createWizard(root) {
           announcing
             ? ''
             : `<h1>${title}</h1><p class="hint">${hintFor(step)}</p>
-               ${isVin && !photo ? `<button class="link" type="button" data-action="change-vin-location">${t(`vin.${vinLocation}`)} · ${t('vin.change')}</button>` : ''}`
+               ${isVin && !photo ? `<button class="vin-switch" type="button" data-action="switch-vin-location">${t(vinLocation === 'door' ? 'vin.switchToWindshield' : 'vin.switchToDoor')}</button>` : ''}`
         }
       </header>
       <div class="viewer">
@@ -87,10 +88,13 @@ export function createWizard(root) {
                  <p class="announce-label">${t('wizard.nextPhoto')}</p>
                  ${needsLocation ? '' : guideSvg(guideKindFor(step), profile.vehicle, 'announce-guide', isLandscape())}
                  <h1>${title}</h1>
-                 <p class="hint">${hintFor(step)}</p>
-                 ${isVin ? vinLocationPicker() : ''}
-                 ${CLOSE_UP_STEPS.has(step.id) ? `<p class="rotate-tip">↻ ${t('wizard.rotateTip')}</p>` : ''}
-                 <button class="btn primary" data-action="open-camera" ${needsLocation ? 'disabled' : ''}>${t('wizard.openCamera')}</button>
+                 <p class="hint">${needsLocation ? t('vin.pickHint') : hintFor(step)}</p>
+                 ${
+                   needsLocation
+                     ? vinLocationPicker() // VIN, 1.ª pantalla: solo se elige dónde está; al tocar una opción pasa a las indicaciones
+                     : `${CLOSE_UP_STEPS.has(step.id) ? `<p class="rotate-tip">↻ ${t('wizard.rotateTip')}</p>` : ''}
+                        <button class="btn primary" data-action="open-camera">${t('wizard.openCamera')}</button>`
+                 }
                </div>`
             : `${photo ? `<img class="photo" alt="${t('wizard.photoAlt', { title })}" src="${photo.url}" />` : '<video class="video" playsinline muted></video>'}
                ${photo ? verdictHtml(photo) : guideSvg(guideKindFor(step), profile.vehicle, 'guide', isLandscape())}
@@ -367,8 +371,8 @@ export function createWizard(root) {
     } else if (action === 'vin-location') {
       vinLocation = target.dataset.value;
       render();
-    } else if (action === 'change-vin-location') {
-      announced.delete(index); // vuelve a la tarjeta donde se elige la ubicación
+    } else if (action === 'switch-vin-location') {
+      vinLocation = vinLocation === 'door' ? 'windshield' : 'door'; // cambia de Parabrisas a Puerta (o al revés) sin salir de la cámara
       render();
     } else if (action === 'submit' || action === 'retry-send') send();
     else if (action === 'cancel-send') {
@@ -380,6 +384,11 @@ export function createWizard(root) {
       index += 1;
       render();
     } else if (action === 'back') {
+      if (STEPS[index]?.id === 'vin' && vinLocation && !photos[index] && !announced.has(index)) {
+        vinLocation = ''; // en las indicaciones del VIN, «Atrás» vuelve a elegir Parabrisas o Puerta
+        render();
+        return;
+      }
       index = Math.max(-1, index - 1);
       render();
     }
@@ -390,6 +399,22 @@ export function createWizard(root) {
     if (index < 0) readIntroForm();
     render();
   });
+
+  // Solo en desarrollo (`npm run dev`): ?step=vin salta a un paso sin llenar el formulario ni tomar las fotos anteriores.
+  // Opcionales: &vehicle=suv y &location=windshield|door (esta última abre directo la cámara del VIN). No existe en producción.
+  if (import.meta.env.DEV) {
+    const params = new URLSearchParams(location.search);
+    const wanted = params.get('step');
+    const at = STEPS.findIndex((step, i) => step.id === wanted || String(i + 1) === wanted);
+    if (at >= 0) {
+      Object.assign(profile, { fullName: 'Prueba Desarrollo', email: 'prueba@example.com', phone: '3055550123', vehicle: VEHICLE_TYPES.includes(params.get('vehicle')) ? params.get('vehicle') : 'sedan' });
+      if (VIN_LOCATIONS.includes(params.get('location'))) {
+        vinLocation = params.get('location');
+        announced.add(at);
+      }
+      index = at;
+    }
+  }
 
   render();
 }

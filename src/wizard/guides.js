@@ -240,9 +240,30 @@ function shape(kind, vehicle, W) {
   }
 }
 
-// `wide`: el visor es apaisado (teléfono en horizontal). Solo cambia las siluetas de cerca (VIN y odómetro);
-// los vehículos ya se ven bien centrados en cualquier orientación.
+// Caja que ocupa cada vehículo en el lienzo 100x100 [x0, y0, x1, y1] (medida con getBBox sobre el dibujo).
+// Frente y trasera comparten caja; el lateral derecho es el espejo del izquierdo. Si cambias un dibujo, vuelve a medirlo.
+const FACE_BOX = { sedan: [20, 35, 80, 76.5], suv: [19, 27, 81, 76.5], pickup: [18.5, 28, 81.5, 76.5], hatchback: [21, 36, 79, 76.5], minivan: [19.5, 22, 80.5, 76.5] };
+const SIDE_BOX = { sedan: [5, 40, 96, 70], suv: [5, 31, 96.5, 70], pickup: [3, 34, 97.5, 70], hatchback: [8, 38, 94.5, 70], minivan: [5, 33, 95.5, 70] };
+
+// En horizontal el visor es apaisado: el vehículo se escala para llenar el ancho (96 %) sin pasar del alto (92 %).
+// Las vistas frontal y trasera son más altas que anchas, así que ahí manda el alto.
+function fitToWideViewer(kind, type, inner) {
+  const box = kind === 'front' || kind === 'rear' ? FACE_BOX[type] : SIDE_BOX[type];
+  const [x0, x1] = kind === 'side-right' ? [100 - box[2], 100 - box[0]] : [box[0], box[2]];
+  const [y0, y1] = [box[1], box[3]];
+  const scale = Math.min((LANDSCAPE_W * 0.96) / (x1 - x0), 92 / (y1 - y0));
+  const cx = (x0 + x1) / 2;
+  const cy = (y0 + y1) / 2;
+  return `<g transform="translate(${LANDSCAPE_W / 2} 50) scale(${scale.toFixed(3)}) translate(${-cx} ${-cy})">${inner}</g>`;
+}
+
+// `wide`: el visor es apaisado (teléfono en horizontal). Las siluetas de cerca (VIN y odómetro) se redibujan en un
+// lienzo más ancho y los vehículos se escalan para ocupar todo el ancho del visor.
 export function guideSvg(kind, vehicle = 'sedan', cls = 'guide', wide = false) {
+  const type = VEHICLE_TYPES.includes(vehicle) ? vehicle : 'sedan';
+  if (wide && !CLOSE_UP_KINDS.has(kind) && kind in { front: 1, rear: 1, 'side-left': 1, 'side-right': 1 }) {
+    return `<svg class="${cls}" viewBox="0 0 ${LANDSCAPE_W} 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${fitToWideViewer(kind, type, kind === 'front' || kind === 'rear' ? faceView(type, kind === 'rear') : shape(kind, type, PORTRAIT_W))}</svg>`;
+  }
   const W = wide && CLOSE_UP_KINDS.has(kind) ? LANDSCAPE_W : PORTRAIT_W;
   return `<svg class="${cls}" viewBox="0 0 ${W} 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${shape(kind, vehicle, W)}</svg>`;
 }
