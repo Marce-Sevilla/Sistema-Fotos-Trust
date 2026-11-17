@@ -1,6 +1,7 @@
 ﻿import assert from 'node:assert/strict';
 import { route, buildNote, photoFileName } from '../worker/api.js';
 import { normalizePhone, splitName } from '../worker/ghl.js';
+import { isUsPhone } from '../src/wizard/profile.js';
 import { encodeMeta } from '../src/api/meta.js';
 import { createMockGhl } from '../dev/mock-ghl.js';
 
@@ -47,6 +48,12 @@ const uploads = (mock) => mock.calls.filter((c) => c.path === '/forms/upload-cus
 await test('teléfono de 10 dígitos recibe +1', () => assert.equal(normalizePhone('(305) 555-0123'), '+13055550123'));
 await test('teléfono con 1 inicial', () => assert.equal(normalizePhone('1 305 555 0123'), '+13055550123'));
 await test('teléfono internacional se respeta', () => assert.equal(normalizePhone('+57 300 123 4567'), '+573001234567'));
+await test('el perfil solo acepta teléfonos de EE. UU. (+1)', () => {
+  const ok = ['3055550123', '(305) 555-0123', '1 305 555 0123', '+1 305 555 0123', '+13055550123'];
+  const bad = ['+57 300 123 4567', '+44 20 7946 0958', '3001234', '305555012', '+2 305 555 0123', '305+5550123', '23055501234'];
+  for (const phone of ok) assert.equal(isUsPhone(phone), true, phone);
+  for (const phone of bad) assert.equal(isUsPhone(phone), false, phone);
+});
 await test('teléfono vacío', () => assert.equal(normalizePhone(''), ''));
 await test('nombre y apellido', () => assert.deepEqual(splitName('Juan Pérez'), { firstName: 'Juan', lastName: 'Pérez' }));
 await test('nombre con varios apellidos', () => assert.deepEqual(splitName('Juan Carlos Pérez Gómez'), { firstName: 'Juan', lastName: 'Carlos Pérez Gómez' }));
