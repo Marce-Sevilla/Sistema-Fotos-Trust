@@ -5,7 +5,7 @@ Proyecto de BritoCRM / Brito Marketing (Fase 1, entrega 26 oct 2026).
 
 ## Qué hace
 1. La persona abre un enlace (o QR), deja nombre, correo, teléfono y elige su tipo de vehículo.
-2. Toma 6 fotos guiadas (frente, trasera, lateral izquierdo/derecho, VIN y odómetro). Cada una se valida **en el navegador**: resolución, nitidez, exposición, que sea un vehículo en la posición correcta, que todas sean del mismo color, y que el VIN/kilometraje se puedan leer.
+2. Toma 6 fotos guiadas, en una vuelta al vehículo en sentido horario (frente, lateral derecho, trasera, lateral izquierdo) y luego VIN y odómetro. Cada una se valida **en el navegador**: resolución, nitidez, exposición, que sea un vehículo en la posición correcta, que todas sean del mismo color, y que el kilometraje se pueda leer. El VIN solo pasa por resolución, nitidez y exposición: no se lee con OCR.
 3. Las fotos y los datos se entregan **automáticamente a BritoCRM** (GoHighLevel).
 
 ## Stack

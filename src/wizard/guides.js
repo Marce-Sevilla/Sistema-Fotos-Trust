@@ -259,7 +259,12 @@ function fitToWideViewer(kind, type, inner) {
 
 // `wide`: el visor es apaisado (teléfono en horizontal). Las siluetas de cerca (VIN y odómetro) se redibujan en un
 // lienzo más ancho y los vehículos se escalan para ocupar todo el ancho del visor.
-export function guideSvg(kind, vehicle = 'sedan', cls = 'guide', wide = false) {
+// `turned`: solo el VIN, con la pantalla en vertical. La silueta ancha se dibuja de pie (girada 90° a la derecha) en un
+// lienzo alto: con el teléfono acostado hacia la izquierda la persona la ve horizontal. El texto de la pantalla no cambia.
+export function guideSvg(kind, vehicle = 'sedan', cls = 'guide', wide = false, turned = false) {
+  if (turned && (kind === 'vin' || kind === 'vin-door')) {
+    return `<svg class="${cls}" viewBox="0 0 100 ${LANDSCAPE_W}" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><g transform="translate(100 0) rotate(90)">${shape(kind, vehicle, LANDSCAPE_W)}</g></svg>`;
+  }
   const type = VEHICLE_TYPES.includes(vehicle) ? vehicle : 'sedan';
   if (wide && !CLOSE_UP_KINDS.has(kind) && kind in { front: 1, rear: 1, 'side-left': 1, 'side-right': 1 }) {
     return `<svg class="${cls}" viewBox="0 0 ${LANDSCAPE_W} 100" preserveAspectRatio="xMidYMid meet" aria-hidden="true">${fitToWideViewer(kind, type, kind === 'front' || kind === 'rear' ? faceView(type, kind === 'rear') : shape(kind, type, PORTRAIT_W))}</svg>`;
