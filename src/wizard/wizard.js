@@ -135,6 +135,7 @@ export function createWizard(root) {
       <div class="field ${errors[name] ? 'invalid' : ''}">
         <label for="f-${name}">${t(`intro.${name === 'fullName' ? 'name' : name}`)}</label>
         <input id="f-${name}" name="${name}" type="${type}" autocomplete="${autocomplete}" ${inputmode ? `inputmode="${inputmode}"` : ''}
+          placeholder="${escapeHtml(t(`intro.${name === 'fullName' ? 'name' : name}.placeholder`))}"
           value="${escapeHtml(profile[name])}" aria-invalid="${errors[name] ? 'true' : 'false'}" />
         ${errors[name] ? `<p class="error" role="alert">${t(errors[name])}</p>` : ''}
       </div>`;

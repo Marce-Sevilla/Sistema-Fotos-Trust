@@ -187,6 +187,11 @@ button {
   font-size: 1rem; /* 16px evita el zoom automático en iOS */
 }
 
+.field input::placeholder {
+  color: var(--muted);
+  opacity: 0.55;
+}
+
 .field input:focus {
   outline: none;
   border-color: var(--orange);
