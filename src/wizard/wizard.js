@@ -21,6 +21,8 @@ export function createWizard(root) {
   let vinLocation = ''; // 'windshield' | 'door': dónde se va a fotografiar el VIN
   let index = -1; // -1 = pantalla inicial (datos y tipo de vehículo)
   let stream = null;
+  let preview = -1; // foto del resumen que se ve en grande (-1 = ninguna)
+  let fixing = null; // { at, previous }: foto del resumen que se está cambiando; `previous` se restaura si la persona se arrepiente
   const linkContactId = contactIdFromUrl(location.search); // contacto del CRM que viene en el enlace (?contact=ID)
   let submission = null; // envío al CRM en curso (conserva lo ya subido para reintentar)
   let sendView = null; // { status: 'sending' | 'error' | 'done', progress, error } mientras se envía
@@ -107,7 +109,7 @@ export function createWizard(root) {
             ? photo.status === 'fail'
               ? `<button class="btn primary" data-action="retake">${t('wizard.retake')}</button>`
               : `<button class="btn secondary" data-action="retake">${t('wizard.retake')}</button>
-                 <button class="btn primary" data-action="next" ${photo.status === 'checking' ? 'disabled' : ''}>${index === STEPS.length - 1 ? t('wizard.finish') : t('wizard.next')}</button>`
+                 <button class="btn primary" data-action="next" ${photo.status === 'checking' ? 'disabled' : ''}>${index === STEPS.length - 1 || fixing ? t('wizard.finish') : t('wizard.next')}</button>`
             : announcing
               ? `<button class="btn secondary" data-action="back">${t('wizard.back')}</button>`
               : `<button class="btn secondary" data-action="back">${t('wizard.back')}</button>
@@ -300,6 +302,34 @@ export function createWizard(root) {
     render();
   }
 
+  // Vista previa de una foto del resumen, con la opción de cambiarla por otra.
+  function previewHtml(i) {
+    const name = t(`steps.${STEPS[i].id}.title`);
+    return `
+      <div class="preview" role="dialog" aria-modal="true" aria-label="${name}" data-action="close-preview">
+        <div class="preview-card">
+          <h2>${i + 1}/${STEPS.length} · ${name}</h2>
+          <img alt="${name}" src="${photos[i].url}" />
+          ${photos[i].status === 'unverified' && photos[i].reason ? `<p class="verdict warn">${t(photos[i].reason)}</p>` : ''}
+          <div class="actions">
+            <button class="btn secondary" type="button" data-action="close-preview">${t('summary.close')}</button>
+            <button class="btn primary" type="button" data-action="change-photo" data-value="${i}">${t('summary.change')}</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // Vuelve al resumen desde la cámara de una foto que se estaba cambiando.
+  function returnToSummary(keepNew) {
+    if (!keepNew) {
+      if (photos[fixing.at]) URL.revokeObjectURL(photos[fixing.at].url);
+      photos[fixing.at] = fixing.previous;
+    } else URL.revokeObjectURL(fixing.previous.url);
+    fixing = null;
+    index = STEPS.length;
+    render();
+  }
+
   function renderSummary() {
     root.innerHTML = `
       <header class="top">
@@ -308,8 +338,9 @@ export function createWizard(root) {
         <p class="contact">${escapeHtml(profile.fullName)} · ${escapeHtml(profile.email)} · ${escapeHtml(profile.phone)} · ${t(`vehicle.${profile.vehicle}`)}</p>
       </header>
       <ul class="grid">
-        ${STEPS.map((s, i) => `<li><img alt="${t(`steps.${s.id}.title`)}" src="${photos[i].url}" /><span>${t(`steps.${s.id}.title`)}</span></li>`).join('')}
+        ${STEPS.map((s, i) => `<li><button type="button" class="thumb" data-action="preview" data-value="${i}" aria-label="${t('summary.view', { name: t(`steps.${s.id}.title`) })}"><img alt="" src="${photos[i].url}" /></button><span>${t(`steps.${s.id}.title`)}</span></li>`).join('')}
       </ul>
+      ${preview >= 0 ? previewHtml(preview) : ''}
       <footer class="actions">
         <button class="btn secondary" data-action="back">${t('wizard.back')}</button>
         <button class="btn primary" data-action="submit">${t('summary.submit')}</button>
@@ -412,16 +443,39 @@ export function createWizard(root) {
     else if (action === 'native-camera') capture(); // sin cámara en vivo, la captura abre la cámara del teléfono
     else if (action === 'capture') capture();
     else if (action === 'retake') retake();
-    else if (action === 'next') {
+    else if (action === 'preview') {
+      preview = Number(target.dataset.value);
+      render();
+    } else if (action === 'close-preview') {
+      if (event.target.closest('.preview-card') && !target.matches('button')) return; // tocar la foto no la cierra
+      preview = -1;
+      render();
+    } else if (action === 'change-photo') {
+      const at = Number(target.dataset.value);
+      fixing = { at, previous: photos[at] };
+      photos[at] = null;
+      preview = -1;
+      index = at;
+      render();
+    } else if (action === 'next') {
+      if (fixing) return returnToSummary(true);
       index += 1;
       render();
     } else if (action === 'back') {
+      if (fixing) return returnToSummary(false);
       if (STEPS[index]?.id === 'vin' && vinLocation && !photos[index] && !announced.has(index)) {
         vinLocation = ''; // en las indicaciones del VIN, «Atrás» vuelve a elegir Parabrisas o Puerta
         render();
         return;
       }
       index = Math.max(-1, index - 1);
+      render();
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && preview >= 0) {
+      preview = -1;
       render();
     }
   });
@@ -438,7 +492,26 @@ export function createWizard(root) {
     const params = new URLSearchParams(location.search);
     const wanted = params.get('step');
     const at = STEPS.findIndex((step, i) => step.id === wanted || String(i + 1) === wanted);
-    if (at >= 0) {
+    if (wanted === 'resumen' || wanted === 'summary') {
+      // ?step=resumen: abre el resumen con fotos de prueba (un lienzo de color por paso).
+      Object.assign(profile, { fullName: 'Prueba Desarrollo', email: 'prueba@example.com', phone: '3055550123', vehicle: 'sedan' });
+      vinLocation = 'windshield';
+      STEPS.forEach((step, i) => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 640;
+        canvas.height = 480;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = `hsl(${i * 55} 55% 45%)`;
+        ctx.fillRect(0, 0, 640, 480);
+        ctx.fillStyle = '#fff';
+        ctx.font = '48px sans-serif';
+        ctx.fillText(step.id, 40, 250);
+        photos[i] = { blob: null, url: canvas.toDataURL('image/jpeg'), status: 'ok', width: 640, height: 480 };
+      });
+      announced.add(0);
+      STEPS.forEach((_, i) => announced.add(i));
+      index = STEPS.length;
+    } else if (at >= 0) {
       Object.assign(profile, { fullName: 'Prueba Desarrollo', email: 'prueba@example.com', phone: '3055550123', vehicle: VEHICLE_TYPES.includes(params.get('vehicle')) ? params.get('vehicle') : 'sedan' });
       if (VIN_LOCATIONS.includes(params.get('location'))) {
         vinLocation = params.get('location');
