@@ -13,7 +13,7 @@ const test = async (name, fn) => {
 
 const SITE = 'https://fotos.example.com';
 const ENV = { GHL_TOKEN: 'dev-token', GHL_LOCATION_ID: 'dev-location', GHL_PHOTOS_FIELD_ID: 'FIELD123' };
-const STEPS = ['frente', 'trasera', 'lateral-izquierdo', 'lateral-derecho', 'vin', 'odometro'];
+const STEPS = ['frente', 'lateral-derecho', 'trasera', 'lateral-izquierdo', 'vin', 'odometro'];
 const PROFILE = { fullName: 'Juan Pérez', email: 'juan@example.com', phone: '3055550123', vehicle: 'suv' };
 
 const post = (path, body, headers = {}) => new Request(SITE + path, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });

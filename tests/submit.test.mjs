@@ -12,7 +12,7 @@ const test = async (name, fn) => {
 };
 
 const ENV = { GHL_TOKEN: 'dev-token', GHL_LOCATION_ID: 'dev-location', GHL_PHOTOS_FIELD_ID: 'FIELD123' };
-const STEPS = ['frente', 'trasera', 'lateral-izquierdo', 'lateral-derecho', 'vin', 'odometro'];
+const STEPS = ['frente', 'lateral-derecho', 'trasera', 'lateral-izquierdo', 'vin', 'odometro'];
 const jpeg = () => {
   const bytes = new Uint8Array(30_000);
   bytes.set([0xff, 0xd8, 0xff]);
