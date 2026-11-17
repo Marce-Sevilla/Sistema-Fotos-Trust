@@ -403,16 +403,46 @@ button {
   min-width: 200px;
 }
 
-.status {
+.cam-alert {
   position: absolute;
-  inset: auto 12px 12px;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: safe center;
+  gap: 10px;
+  padding: 20px;
+  overflow-y: auto;
+  text-align: center;
+  background: rgb(7 26 45 / 0.94);
+}
+
+.cam-alert-icon {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  color: var(--orange-warm);
+}
+
+.cam-alert h2 {
   margin: 0;
-  padding: 10px 14px;
-  border-radius: 12px;
-  background: rgb(0 0 0 / 0.7);
-  color: var(--white);
-  font-size: 0.85rem;
-  line-height: 1.4;
+  font-size: 1.2rem;
+}
+
+.cam-alert p {
+  max-width: 34ch;
+  margin: 0 0 6px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.viewer .cam-alert .btn {
+  flex: none;
+  width: 100%;
+  max-width: 280px;
+  min-height: 48px;
 }
 
 /* Botones */
@@ -556,6 +586,31 @@ button {
 
 /* Teléfono en horizontal: la cámara ocupa la derecha y las instrucciones y botones quedan a la izquierda. */
 @media (orientation: landscape) and (max-height: 520px) {
+  /* Alerta de la cámara: el visor es bajo, se compacta para que quepa sin scroll. */
+  .cam-alert {
+    gap: 6px;
+    padding: 10px 16px;
+  }
+
+  .cam-alert-icon {
+    display: none;
+  }
+
+  .cam-alert h2 {
+    font-size: 1.05rem;
+  }
+
+  .cam-alert p {
+    max-width: 52ch;
+    margin-bottom: 2px;
+    font-size: 0.78rem;
+    line-height: 1.35;
+  }
+
+  .viewer .cam-alert .btn {
+    min-height: 40px;
+  }
+
   /* Ya está en horizontal: el aviso de «gira el teléfono» sobra. */
   .rotate-tip {
     display: none;

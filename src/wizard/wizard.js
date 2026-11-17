@@ -103,8 +103,7 @@ export function createWizard(root) {
                  }
                </div>`
             : `${photo ? `<img class="photo" alt="${t('wizard.photoAlt', { title })}" src="${photo.url}" />` : '<video class="video" playsinline muted></video>'}
-               ${photo ? verdictHtml(photo) : guideSvg(guideKindFor(step), profile.vehicle, 'guide', wideNow(), vinTurned())}
-               <p class="status" role="status" hidden></p>`
+               ${photo ? verdictHtml(photo) : guideSvg(guideKindFor(step), profile.vehicle, 'guide', wideNow(), vinTurned())}`
         }
       </div>
       <footer class="actions">
@@ -205,24 +204,61 @@ export function createWizard(root) {
   // ---- Cámara y captura -------------------------------------------------------
   async function initCamera() {
     const video = root.querySelector('video');
-    const status = root.querySelector('.status');
     const shutter = root.querySelector('[data-action="capture"]');
-    const showStatus = (msg) => {
-      status.textContent = msg;
-      status.hidden = false;
-    };
+    if (!video || !shutter) return;
+    hideCameraAlert();
 
-    if (!cameraSupported()) {
-      showStatus(t('wizard.noCamera'));
-      return;
-    }
+    if (!cameraSupported()) return showCameraAlert('unsupported');
     shutter.disabled = true;
     try {
       stream = await startCamera(video);
     } catch {
-      showStatus(t('wizard.cameraDenied'));
+      // Sin permiso (o rechazado): alerta al centro con un botón para activarlo, en vez de dejar el visor en negro.
+      shutter.disabled = false;
+      return showCameraAlert((await cameraPermission()) === 'denied' ? 'denied' : 'prompt');
     }
     shutter.disabled = false;
+  }
+
+  // Estado del permiso de cámara: 'granted' | 'prompt' | 'denied', o 'unknown' si el navegador no lo informa (Safari).
+  async function cameraPermission() {
+    try {
+      return (await navigator.permissions.query({ name: 'camera' })).state;
+    } catch {
+      return 'unknown';
+    }
+  }
+
+  let permissionWatch = null;
+  function hideCameraAlert() {
+    if (permissionWatch) permissionWatch.onchange = null;
+    permissionWatch = null;
+    root.querySelector('.cam-alert')?.remove();
+  }
+
+  // Alerta al centro del visor cuando la cámara no se pudo abrir. kind: 'prompt' (aún no decide), 'denied' (bloqueada
+  // en el navegador) o 'unsupported' (el navegador no permite la cámara aquí, p. ej. sin HTTPS).
+  function showCameraAlert(kind) {
+    const viewer = root.querySelector('.viewer');
+    if (!viewer) return;
+    hideCameraAlert();
+    const canRetry = kind !== 'unsupported';
+    viewer.insertAdjacentHTML(
+      'beforeend',
+      `<div class="cam-alert" role="alertdialog" aria-labelledby="cam-alert-title">
+         <svg class="cam-alert-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2.4h6.8L17 8h3v11H4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="13.5" r="3.4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+         <h2 id="cam-alert-title">${t(`camera.${kind}.title`)}</h2>
+         <p>${t(`camera.${kind}.text`)}</p>
+         ${canRetry ? `<button class="btn primary" type="button" data-action="enable-camera">${t('camera.enable')}</button>` : ''}
+         <button class="btn ${canRetry ? 'secondary' : 'primary'}" type="button" data-action="native-camera">${t('camera.useNative')}</button>
+       </div>`,
+    );
+    // Si la persona habilita el permiso desde el navegador, la cámara arranca sola.
+    navigator.permissions?.query({ name: 'camera' }).then((status) => {
+      if (!root.querySelector('.cam-alert')) return;
+      permissionWatch = status;
+      status.onchange = () => status.state === 'granted' && initCamera();
+    }, () => {});
   }
 
   async function capture() {
@@ -384,7 +420,9 @@ export function createWizard(root) {
     else if (action === 'cancel-send') {
       sendView = null; // vuelve al resumen; lo ya subido se conserva para el próximo intento
       render();
-    } else if (action === 'capture') capture();
+    } else if (action === 'enable-camera') initCamera();
+    else if (action === 'native-camera') capture(); // sin cámara en vivo, la captura abre la cámara del teléfono
+    else if (action === 'capture') capture();
     else if (action === 'retake') retake();
     else if (action === 'next') {
       index += 1;
