@@ -3,6 +3,7 @@ import logoUrl from './assets/logo-header.png';
 import { initDebug, isDebug, toggleDebug } from './debug.js';
 import { initI18n, t, getLang, setLang, onLangChange } from './i18n.js';
 import { createWizard } from './wizard/wizard.js';
+import { animateScreens } from './ui/fx.js';
 
 initDebug();
 initI18n();
@@ -49,4 +50,6 @@ brand.addEventListener('click', () => {
   }
 });
 
-createWizard(document.getElementById('wizard'));
+const wizardRoot = document.getElementById('wizard');
+animateScreens(wizardRoot);
+createWizard(wizardRoot);
