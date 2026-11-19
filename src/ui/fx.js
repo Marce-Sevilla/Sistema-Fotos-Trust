@@ -1,4 +1,6 @@
 // Efectos de texto y de transición entre pasos. Todos se apagan con «reducir movimiento».
+import { onLangChange } from '../i18n.js';
+
 const GLYPHS = '01<>/\\_-+*#';
 const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
@@ -19,15 +21,24 @@ export function scramble(element, duration = 520) {
 }
 
 // Cada vez que la pantalla cambia de verdad (otro título), el contenido entra de borroso a nítido y el
-// título se descifra. Las actualizaciones de la misma pantalla (p. ej. el resultado de la validación) no lo repiten.
+// título se descifra. No se repite en la misma pantalla (p. ej. el resultado de la validación) ni al cambiar de idioma.
 export function animateScreens(root) {
   let lastKey = null;
   let timer = 0;
+  let languageChanged = false;
+  // Al cambiar de idioma el texto se cambia directo, sin «descifrarlo» ni animar la pantalla.
+  onLangChange(() => {
+    languageChanged = true;
+  });
   new MutationObserver(() => {
     const heading = root.querySelector('h1');
     const key = heading?.textContent ?? '';
     if (key === lastKey) return;
     lastKey = key;
+    if (languageChanged) {
+      languageChanged = false;
+      return;
+    }
     if (reduceMotion()) return;
     root.classList.remove('enter');
     void root.offsetWidth; // reinicia la animación

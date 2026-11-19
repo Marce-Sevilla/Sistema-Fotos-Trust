@@ -689,12 +689,13 @@ button {
 
   .wizard {
     display: grid;
-    grid-template-columns: minmax(220px, 34%) 1fr;
+    /* El visor (con la silueta) va a la izquierda; la columna con las indicaciones y los botones, a la derecha. */
+    grid-template-columns: 1fr minmax(220px, 34%);
     grid-template-rows: auto 1fr auto;
     grid-template-areas:
-      'top viewer'
-      'gap viewer'
-      'actions viewer';
+      'viewer top'
+      'viewer gap'
+      'viewer actions';
     column-gap: 16px;
   }
 

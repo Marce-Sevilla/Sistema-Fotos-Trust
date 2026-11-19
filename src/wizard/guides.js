@@ -122,8 +122,8 @@ function faceView(type, rear) {
   const parts = [
     path(outline),
     path(glass, FINE),
-    // retrovisores (sobresalen un poco del ancho de la carrocería)
-    half(path(`M${L + 3} ${cowl - 4} H${L - 2.5} Q${L - 4} ${cowl - 4} ${L - 4} ${cowl - 2.5} V${cowl + 0.5} Q${L - 4} ${cowl + 2} ${L - 2.5} ${cowl + 2} H${L + 3}`)),
+    // retrovisores (sobresalen un poco del ancho de la carrocería). La trasera no los lleva, para que no se confunda con el frente.
+    ...(rear ? [] : [half(path(`M${L + 3} ${cowl - 4} H${L - 2.5} Q${L - 4} ${cowl - 4} ${L - 4} ${cowl - 2.5} V${cowl + 0.5} Q${L - 4} ${cowl + 2} ${L - 2.5} ${cowl + 2} H${L + 3}`))]),
     // llantas: solo se ve la parte que asoma bajo el parachoques
     half(path(`M${L + 2} ${bottom} V${TIRE_Y - 1} Q${L + 2} ${TIRE_Y} ${L + 3.5} ${TIRE_Y} H${L + 7.5} Q${L + 9} ${TIRE_Y} ${L + 9} ${TIRE_Y - 1} V${bottom}`)),
   ];
@@ -241,14 +241,15 @@ function shape(kind, vehicle, W) {
 }
 
 // Caja que ocupa cada vehículo en el lienzo 100x100 [x0, y0, x1, y1] (medida con getBBox sobre el dibujo).
-// Frente y trasera comparten caja; el lateral derecho es el espejo del izquierdo. Si cambias un dibujo, vuelve a medirlo.
+// Frente y trasera comparten caja (la trasera, sin retrovisores, se recorta al ajustarla); el lateral derecho es el espejo del izquierdo. Si cambias un dibujo, vuelve a medirlo.
 const FACE_BOX = { sedan: [20, 35, 80, 76.5], suv: [19, 27, 81, 76.5], pickup: [18.5, 28, 81.5, 76.5], hatchback: [21, 36, 79, 76.5], minivan: [19.5, 22, 80.5, 76.5] };
 const SIDE_BOX = { sedan: [5, 40, 96, 70], suv: [5, 31, 96.5, 70], pickup: [3, 34, 97.5, 70], hatchback: [8, 38, 94.5, 70], minivan: [5, 33, 95.5, 70] };
 
 // En horizontal el visor es apaisado: el vehículo se escala para llenar el ancho (96 %) sin pasar del alto (92 %).
 // Las vistas frontal y trasera son más altas que anchas, así que ahí manda el alto.
 function fitToWideViewer(kind, type, inner) {
-  const box = kind === 'front' || kind === 'rear' ? FACE_BOX[type] : SIDE_BOX[type];
+  let box = kind === 'front' || kind === 'rear' ? FACE_BOX[type] : SIDE_BOX[type];
+  if (kind === 'rear') box = [box[0] + 4, box[1], box[2] - 4, box[3]]; // sin retrovisores, la trasera es 4 unidades más angosta por lado
   const [x0, x1] = kind === 'side-right' ? [100 - box[2], 100 - box[0]] : [box[0], box[2]];
   const [y0, y1] = [box[1], box[3]];
   const scale = Math.min((LANDSCAPE_W * 0.96) / (x1 - x0), 92 / (y1 - y0));
